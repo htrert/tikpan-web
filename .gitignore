@@ -1,18 +1,4 @@
-build/
-outputs/
-.venv/
-data/*
-!data/schema.sql
-!data/seed.example.json
-__pycache__/
-*.pyc
-.env
-
-# 运行日志
+node_modules/
+dist/
 *.log
-flask.out.log
-flask.err.log
-
-# 系统文件
-.DS_Store
-Thumbs.db
+*.tsbuildinfo
