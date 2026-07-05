@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, Sparkles, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { capabilityTabs, creativeModels } from "../../appData";
+import { capabilityTabs, creativeModels, currentUser } from "../../appData";
 import type { CapabilityCategory, CreativeModel } from "../../types";
 import { cn } from "../../lib";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { ResultPanel } from "./ResultPanel";
 import { PromptComposer } from "./PromptComposer";
+import { WorkspaceTopBar } from "./WorkspaceTopBar";
 
 export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
   const [category, setCategory] = useState<CapabilityCategory>("all");
@@ -18,7 +19,7 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
   const filteredModels = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return creativeModels.filter((model) => {
-      const matchesCategory = category === "all" || model.category === category;
+      const matchesCategory = category === "all" || (category === "my" ? model.favorite : model.category === category);
       const matchesQuery =
         !normalizedQuery ||
         [model.name, model.group, model.description, ...model.bestFor, ...model.tags].some((item) => item.toLowerCase().includes(normalizedQuery));
@@ -35,14 +36,16 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
 
   const changeCategory = (nextCategory: CapabilityCategory) => {
     setCategory(nextCategory);
-    const nextModel = creativeModels.find((model) => nextCategory === "all" || model.category === nextCategory);
+    const nextModel = creativeModels.find((model) =>
+      nextCategory === "all" || (nextCategory === "my" ? model.favorite : model.category === nextCategory),
+    );
     if (nextModel) setSelectedModelId(nextModel.id);
   };
 
   return (
     <div className="fine-grid min-h-[calc(100vh-64px)]">
-      <div className="mx-auto flex max-w-[1540px] gap-0 px-0 lg:px-0">
-        <aside className="hidden w-[286px] shrink-0 border-r border-violet-100/80 bg-violet-50/55 lg:block">
+      <div className="mx-auto flex max-w-[1600px] gap-0 px-0 lg:px-0">
+        <aside className="hidden w-[302px] shrink-0 border-r border-violet-100/80 bg-violet-50/55 md:block">
           <WorkspaceSidebar
             category={category}
             query={query}
@@ -56,7 +59,7 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
         </aside>
 
         <div className="min-w-0 flex-1 px-4 py-4 sm:px-6 lg:py-6">
-          <div className="mb-3 flex items-center justify-between gap-3 lg:hidden">
+          <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
             <button
               className="inline-flex h-10 items-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white shadow-sm"
               type="button"
@@ -68,7 +71,8 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
             <span className="truncate text-sm font-black text-slate-700">{selectedModel.name}</span>
           </div>
 
-          <section className="flex min-h-[calc(100vh-112px)] flex-col gap-4 pb-6">
+          <WorkspaceTopBar model={selectedModel} user={currentUser} />
+          <section className="flex min-h-[calc(100vh-184px)] flex-col gap-4 pb-6">
             <ResultPanel generatedPrompt={generatedPrompt} model={selectedModel} />
             <PromptComposer initialPrompt={templatePrompt} model={selectedModel} onGenerate={setGeneratedPrompt} />
           </section>
@@ -79,7 +83,7 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
         {mobileSidebarOpen && (
           <motion.div
             animate={{ opacity: 1 }}
-            className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm md:hidden"
             exit={{ opacity: 0 }}
             initial={{ opacity: 0 }}
           >

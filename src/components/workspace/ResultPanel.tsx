@@ -1,14 +1,15 @@
-import { BadgeCheck, Download, FileJson, ImagePlus, Maximize2, PackageOpen, Save, Sparkles, Video } from "lucide-react";
+import { BadgeCheck, Download, Maximize2, PackageOpen, PenTool, Save, Sparkles, Video } from "lucide-react";
 import type { CreativeModel } from "../../types";
 import { cn } from "../../lib";
 
 const roleChips = [
-  { label: "文生图", icon: ImagePlus },
-  { label: "商品主图", icon: PackageOpen },
-  { label: "广告海报", icon: Sparkles },
-  { label: "4K 输出", icon: BadgeCheck },
-  { label: "异步生成", icon: FileJson },
-  { label: "视频模型可扩展", icon: Video },
+  { label: "官方", icon: Sparkles },
+  { label: "我的", icon: BadgeCheck },
+  { label: "全能写作大师", icon: PenTool },
+  { label: "文案策划大师", icon: PackageOpen },
+  { label: "商业策略顾问", icon: Sparkles },
+  { label: "数据分析师", icon: BadgeCheck },
+  { label: "思维导图大师", icon: Video },
 ];
 
 export function ResultPanel({ generatedPrompt, model }: { generatedPrompt: string; model: CreativeModel }) {
@@ -17,7 +18,11 @@ export function ResultPanel({ generatedPrompt, model }: { generatedPrompt: strin
   return (
     <div className="relative flex min-h-[430px] flex-1 flex-col">
       <div className="absolute right-0 top-0 hidden items-center gap-2 lg:flex">
-        {["置顶", "玩法说明", "选择角色"].map((item, index) => (
+        {[
+          "置顶",
+          "模板灵感",
+          "创作建议",
+        ].map((item, index) => (
           <button
             key={item}
             className={cn(
@@ -36,8 +41,11 @@ export function ResultPanel({ generatedPrompt, model }: { generatedPrompt: strin
           <Icon className="h-8 w-8" />
         </span>
         <h1 className="mt-6 text-3xl font-black tracking-normal text-slate-950 md:text-4xl">{model.name}</h1>
-        <p className="mt-3 text-xs font-black uppercase tracking-[0.22em] text-slate-500">{model.group}</p>
-        <p className="mt-4 max-w-2xl text-sm font-semibold leading-7 text-slate-500">{model.description} 由 Tikpan 智能调度，打开即可开始创作。</p>
+        <p className="mt-3 text-xs font-black uppercase tracking-[0.22em] text-slate-500">{model.provider ?? model.group}</p>
+        <div className="mt-5 max-w-2xl rounded-3xl border border-violet-200/80 bg-white/72 px-6 py-4 shadow-sm backdrop-blur-xl">
+          <p className="text-sm font-semibold leading-7 text-slate-600">{model.description}</p>
+          <p className="mt-2 text-xs font-black text-violet-700">描述你的需求，Tikpan 会把它整理成可继续创作的结果。</p>
+        </div>
 
         {generatedPrompt && (
           <div className="mt-8 w-full max-w-3xl rounded-3xl border border-white/80 bg-white/80 p-4 text-left shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
@@ -49,7 +57,7 @@ export function ResultPanel({ generatedPrompt, model }: { generatedPrompt: strin
               <div className="flex shrink-0 flex-wrap gap-2">
                 <button className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white" type="button">
                   <Save className="h-3.5 w-3.5" />
-                  保存
+                  保存到作品
                 </button>
                 <button className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm" type="button">
                   <Download className="h-3.5 w-3.5" />

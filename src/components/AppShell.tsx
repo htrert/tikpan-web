@@ -4,6 +4,7 @@ import { TopNav } from "./TopNav";
 import { WorkspacePage } from "./workspace/WorkspacePage";
 import { ExplorePage } from "./explore/ExplorePage";
 import { AccountPage } from "./account/AccountPage";
+import { AdminPlaceholder } from "./admin/AdminPlaceholder";
 
 type AppShellProps = {
   accountSection: AccountSection;
@@ -26,6 +27,10 @@ export function AppShell({
   onNavigate,
   onUseTemplate,
 }: AppShellProps) {
+  if (route === "admin") {
+    return <AdminPlaceholder isAdmin={isAdmin} user={user} onNavigate={onNavigate} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#f8faf7] text-slate-950">
       <TopNav route={route} user={user} onNavigate={onNavigate} />

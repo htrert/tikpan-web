@@ -16,10 +16,10 @@ export function ExplorePage({ onUseTemplate }: { onUseTemplate: (template: Templ
             </div>
             <h1 className="mt-5 max-w-3xl text-3xl font-black tracking-normal text-slate-950 md:text-5xl">先看灵感，再一键带入工作台。</h1>
             <p className="mt-4 max-w-2xl text-base font-semibold leading-8 text-slate-600">
-              从行业模板、热门能力和模型示例里挑一个方向，直接开始今天的素材创作。
+              从行业模板、热门能力和创作案例里挑一个方向，直接开始今天的素材创作。
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
-              {["内容广场", "应用市场", "行业模板", "系统公告"].map((item) => (
+              {["灵感案例", "创作模板", "行业模板", "更新说明"].map((item) => (
                 <button key={item} className="rounded-full bg-white/80 px-4 py-2 text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-950 hover:text-white" type="button">
                   {item}
                 </button>

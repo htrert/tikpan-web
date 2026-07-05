@@ -2,25 +2,18 @@ import type { LucideIcon } from "lucide-react";
 
 export type AppRoute = "workspace" | "explore" | "account" | "admin";
 
-export type AccountSection =
-  | "assets"
-  | "library"
-  | "presets"
-  | "orders"
-  | "settings"
-  | "admin-overview"
-  | "admin-models"
-  | "admin-providers"
-  | "admin-routing";
+export type AccountSection = "assets" | "library" | "presets" | "orders" | "settings";
 
-export type CapabilityCategory = "all" | "image" | "video";
+export type CapabilityCategory = "all" | "chat" | "image" | "video" | "audio" | "my";
 
-export type ModelParameterOption = {
+export type CreativeModelCategory = Exclude<CapabilityCategory, "all" | "my">;
+
+export type CreativeControlOption = {
   label: string;
   value: string | number | boolean;
 };
 
-export type ModelParameter = {
+export type CreativeControl = {
   key: string;
   label: string;
   type: "textarea" | "text" | "select" | "segmented" | "slider" | "switch" | "number";
@@ -31,24 +24,24 @@ export type ModelParameter = {
   min?: number;
   max?: number;
   step?: number;
-  options?: ModelParameterOption[];
+  options?: CreativeControlOption[];
 };
 
 export type CreativeModel = {
   id: string;
   name: string;
-  category: Exclude<CapabilityCategory, "all">;
+  category: CreativeModelCategory;
   group: string;
   description: string;
   bestFor: string[];
   tags: string[];
   cost: number;
-  health: number;
-  platformModelId: string;
-  upstreamModelName: string;
-  endpointPath: string;
-  parameters: ModelParameter[];
+  controls: CreativeControl[];
   icon: LucideIcon;
+  provider?: string;
+  favorite?: boolean;
+  health?: number;
+  subtitle?: string;
 };
 
 export type Template = {

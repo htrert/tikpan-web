@@ -69,11 +69,11 @@ export function UserMenu({ user, onNavigate }: UserMenuProps) {
                   type="button"
                   onClick={() => {
                     setOpen(false);
-                    onNavigate("account", "admin-overview");
+                    onNavigate("admin");
                   }}
                 >
                   <Shield className="h-4 w-4 text-teal-600" />
-                  管理配置
+                  进入管理后台
                 </button>
               )}
               <button

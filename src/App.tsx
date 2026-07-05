@@ -5,7 +5,8 @@ import type { AccountSection, AppRoute, Template } from "./types";
 
 function routeFromPath(pathname: string): AppRoute {
   if (pathname.startsWith("/explore")) return "explore";
-  if (pathname.startsWith("/account") || pathname.startsWith("/admin")) return "account";
+  if (pathname.startsWith("/account")) return "account";
+  if (pathname.startsWith("/admin")) return "admin";
   return "workspace";
 }
 
@@ -20,9 +21,7 @@ function App() {
   const [route, setRoute] = useState<AppRoute>(() =>
     typeof window === "undefined" ? "workspace" : routeFromPath(window.location.pathname),
   );
-  const [accountSection, setAccountSection] = useState<AccountSection>(() =>
-    typeof window !== "undefined" && window.location.pathname.startsWith("/admin") ? "admin-overview" : "assets",
-  );
+  const [accountSection, setAccountSection] = useState<AccountSection>("assets");
   const [templatePrompt, setTemplatePrompt] = useState("");
 
   useEffect(() => {
