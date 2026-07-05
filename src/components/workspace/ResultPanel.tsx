@@ -1,5 +1,6 @@
 import { BadgeCheck, Download, Maximize2, PackageOpen, PenTool, Save, Sparkles, Video } from "lucide-react";
 import type { CreativeModel } from "../../types";
+import type { RemoteTaskRecord } from "../../apiClient";
 import { cn } from "../../lib";
 
 const roleChips = [
@@ -12,8 +13,19 @@ const roleChips = [
   { label: "思维导图大师", icon: Video },
 ];
 
-export function ResultPanel({ generatedPrompt, model }: { generatedPrompt: string; model: CreativeModel }) {
+export function ResultPanel({
+  error,
+  generatedPrompt,
+  model,
+  task,
+}: {
+  error?: string;
+  generatedPrompt: string;
+  model: CreativeModel;
+  task?: RemoteTaskRecord | null;
+}) {
   const Icon = model.icon;
+  const outputUrls = task?.output?.publicUrls ?? task?.output?.public_urls ?? [];
 
   return (
     <div className="relative flex min-h-[430px] flex-1 flex-col">
@@ -47,12 +59,31 @@ export function ResultPanel({ generatedPrompt, model }: { generatedPrompt: strin
           <p className="mt-2 text-xs font-black text-violet-700">描述你的需求，Tikpan 会把它整理成可继续创作的结果。</p>
         </div>
 
-        {generatedPrompt && (
+        {(generatedPrompt || task || error) && (
           <div className="mt-8 w-full max-w-3xl rounded-3xl border border-white/80 bg-white/80 p-4 text-left shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-black text-violet-700">已生成草稿</p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">{generatedPrompt}</p>
+                <p className={cn("text-xs font-black", error ? "text-rose-600" : "text-violet-700")}>
+                  {error ? "生成失败" : task ? `真实任务 · ${task.status}` : "已提交"}
+                </p>
+                {task?.task_id && <p className="mt-2 text-xs font-semibold text-slate-400">Task ID: {task.task_id}</p>}
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
+                  {error || task?.message || generatedPrompt}
+                </p>
+                {typeof task?.progress === "number" && (
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-violet-600 transition-all" style={{ width: `${Math.max(0, Math.min(100, task.progress))}%` }} />
+                  </div>
+                )}
+                {outputUrls.length > 0 && (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {outputUrls.map((url) => (
+                      <a key={url} className="truncate rounded-xl bg-slate-50 px-3 py-2 text-xs font-black text-violet-700" href={url} target="_blank" rel="noreferrer">
+                        {url}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 <button className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white" type="button">

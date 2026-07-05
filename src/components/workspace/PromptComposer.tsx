@@ -1,6 +1,7 @@
 import { Boxes, FolderHeart, ImagePlus, Loader2, SendHorizontal, SlidersHorizontal, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CreativeControl, CreativeModel } from "../../types";
+import type { StudioInput } from "../../orchestrator";
 import { cn, formatTokens } from "../../lib";
 
 type ParamValue = string | number | boolean;
@@ -27,7 +28,7 @@ export function PromptComposer({
 }: {
   initialPrompt: string;
   model: CreativeModel;
-  onGenerate: (prompt: string) => void;
+  onGenerate: (input: StudioInput) => Promise<void>;
 }) {
   const [prompt, setPrompt] = useState("");
   const [paramValues, setParamValues] = useState<Record<string, ParamValue>>(() => defaultValuesFor(model));
@@ -48,18 +49,20 @@ export function PromptComposer({
     setParamValues((current) => ({ ...current, [key]: value }));
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     const text = prompt.trim() || "一张干净高级的商品视觉，突出产品质感和核心卖点。";
+    const promptKey = model.controls.find((parameter) => parameter.type === "textarea" && parameter.required)?.key ?? "prompt";
+    const input: StudioInput = {
+      ...paramValues,
+      [promptKey]: text,
+    };
+
     setGenerating(true);
-    window.setTimeout(() => {
+    try {
+      await onGenerate(input);
+    } finally {
       setGenerating(false);
-      const visibleParams = model.controls
-        .filter((parameter) => parameter.key !== "prompt")
-        .filter((parameter) => paramValues[parameter.key] !== undefined && paramValues[parameter.key] !== "")
-        .map((parameter) => parameter.label + " " + String(paramValues[parameter.key]))
-        .join("，");
-      onGenerate(text + (visibleParams ? "。" + visibleParams : ""));
-    }, 480);
+    }
   };
 
   return (
@@ -242,6 +245,22 @@ function ParameterControl({
           onChange={(event) => onChange(event.target.value)}
         />
       </label>
+    );
+  }
+
+  if (parameter.type === "file") {
+    return (
+      <div className="grid gap-2 rounded-xl bg-slate-50/80 p-2.5">
+        {label}
+        <button
+          className="h-9 rounded-lg border border-dashed border-slate-300 bg-white px-3 text-left text-xs font-black text-slate-500 transition hover:border-violet-300 hover:text-violet-700"
+          type="button"
+          onClick={() => onChange("")}
+        >
+          后台已配置文件参数，上传通道待接入
+        </button>
+        {helper}
+      </div>
     );
   }
 

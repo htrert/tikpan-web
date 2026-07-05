@@ -1,7 +1,15 @@
 import { ArrowLeft, Bell, ChevronDown, CircleDollarSign, FileText, Grid2X2, Home, KeyRound, LayoutDashboard, LockKeyhole, MessageSquare, Moon, ReceiptText, Search, Settings, ShieldCheck, Sparkles, Ticket, UsersRound, WalletCards } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { adminModelProviders, adminNavGroups, adminProfile, adminRecentLogs } from "../../adminData";
-import type { AccountSection, AppRoute, UserProfile } from "../../types";
+import {
+  getFrontendConfig,
+  listRemotePlatformModels,
+  updateFrontendConfig,
+  upsertRemotePlatformModel,
+  type PlatformModelUpsert,
+} from "../../apiClient";
+import { platformModels as localPlatformModels } from "../../productData";
+import type { AccountSection, AppRoute, CapabilityMenuItem, FrontendConfig, FrontendNavItem, UserProfile } from "../../types";
 import { cn, formatTokens } from "../../lib";
 
 const navIcons: Record<string, typeof LayoutDashboard> = {
@@ -17,6 +25,8 @@ const navIcons: Record<string, typeof LayoutDashboard> = {
   tickets: Ticket,
   "core-admin": ShieldCheck,
   "admin-panel": LayoutDashboard,
+  "frontend-config": Grid2X2,
+  "platform-models": Sparkles,
   users: UsersRound,
   home: Home,
   "model-market": Sparkles,
@@ -127,6 +137,10 @@ export function AdminPlaceholder({
         </aside>
 
         <main className="min-w-0 flex-1 p-4 sm:p-6">
+          {activeKey === "frontend-config" && <FrontendConfigPanel />}
+          {activeKey === "platform-models" && <PlatformModelsPanel />}
+          {activeKey !== "frontend-config" && activeKey !== "platform-models" && (
+          <>
           <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)]">
             <div className="h-1.5 rounded-full bg-gradient-to-r from-sky-400 via-blue-500 to-teal-300" />
             <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
@@ -212,6 +226,8 @@ export function AdminPlaceholder({
               </div>
             </div>
           </section>
+          </>
+          )}
         </main>
       </div>
     </div>
@@ -235,4 +251,573 @@ function SmallCard({ title, value, desc }: { title: string; value: string; desc:
       <p className="mt-2 text-xs font-semibold text-slate-400">{desc}</p>
     </div>
   );
+}
+
+function FrontendConfigPanel() {
+  const [config, setConfig] = useState<FrontendConfig | null>(null);
+  const [models, setModels] = useState<Awaited<ReturnType<typeof listRemotePlatformModels>>>([]);
+  const [status, setStatus] = useState("正在读取前台配置...");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getFrontendConfig(), listRemotePlatformModels(localPlatformModels)])
+      .then(([config, models]) => {
+        if (!cancelled) {
+          setConfig(config);
+          setModels(models);
+          setStatus("前台导航和能力目录由这里驱动，保存后刷新前台即可生效。");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(error instanceof Error ? error.message : "读取前台配置失败。");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const save = async () => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      const saved = await updateFrontendConfig(config);
+      setConfig(saved);
+      setStatus("已保存：顶部菜单、左侧能力目录、默认路由策略都会从后端配置读取。");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "保存前台配置失败。");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm">
+      <PanelHeader
+        title="前台配置"
+        desc="配置顶部菜单、能力目录、每个能力关联的平台模型，以及默认调度策略。"
+        actionLabel={saving ? "保存中..." : "保存配置"}
+        disabled={saving || !config}
+        onAction={save}
+      />
+      {config && (
+        <div className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+          <div className="grid content-start gap-5">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-black text-slate-950">顶部菜单</p>
+              <div className="mt-3 grid gap-2">
+                {config.navItems.map((item, index) => (
+                  <NavItemEditor
+                    key={item.key}
+                    item={item}
+                    onChange={(next) =>
+                      setConfig((current) =>
+                        current
+                          ? {
+                              ...current,
+                              navItems: current.navItems.map((navItem, navIndex) => (navIndex === index ? next : navItem)),
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-black text-slate-950">默认调度策略</p>
+              <select
+                className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none"
+                value={config.defaultRouteMode}
+                onChange={(event) =>
+                  setConfig((current) => (current ? { ...current, defaultRouteMode: event.target.value as FrontendConfig["defaultRouteMode"] } : current))
+                }
+              >
+                {["balanced", "quality", "fast", "cheap", "stable"].map((mode) => (
+                  <option key={mode} value={mode}>
+                    {mode}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid content-start gap-3">
+            {config.capabilityMenu.map((item, index) => (
+              <CapabilityItemEditor
+                key={item.key}
+                item={item}
+                models={models}
+                onChange={(next) =>
+                  setConfig((current) =>
+                    current
+                      ? {
+                          ...current,
+                          capabilityMenu: current.capabilityMenu.map((capability, capabilityIndex) => (capabilityIndex === index ? next : capability)),
+                        }
+                      : current,
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {config && (
+        <details className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-black text-slate-700">查看配置 JSON</summary>
+          <pre className="mt-3 max-h-80 overflow-auto rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-50">{JSON.stringify(config, null, 2)}</pre>
+        </details>
+      )}
+      <p className="mt-3 text-sm font-semibold text-slate-500">{status}</p>
+    </section>
+  );
+}
+
+function PlatformModelsPanel() {
+  const [models, setModels] = useState<Awaited<ReturnType<typeof listRemotePlatformModels>>>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [form, setForm] = useState<PlatformModelUpsert | null>(null);
+  const [status, setStatus] = useState("正在读取平台模型...");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    listRemotePlatformModels(localPlatformModels)
+      .then((items) => {
+        if (cancelled) return;
+        setModels(items);
+        const first = items[0];
+        if (first) {
+          setSelectedId(first.id);
+          setForm(platformModelToUpsert(first));
+        }
+        setStatus("平台模型、展示名称、分类、参数 schema 都从这里维护。");
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(error instanceof Error ? error.message : "读取平台模型失败。");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedModel = useMemo(() => models.find((model) => model.id === selectedId), [models, selectedId]);
+
+  const selectModel = (id: string) => {
+    const next = models.find((model) => model.id === id);
+    setSelectedId(id);
+    if (next) setForm(platformModelToUpsert(next));
+  };
+
+  const save = async () => {
+    if (!form) return;
+    setSaving(true);
+    try {
+      const saved = await upsertRemotePlatformModel(form, selectedId);
+      setStatus(`已保存平台模型：${saved.name}`);
+      const refreshed = await listRemotePlatformModels(localPlatformModels);
+      setModels(refreshed);
+      setSelectedId(saved.id);
+      const current = refreshed.find((model) => model.id === saved.id);
+      if (current) setForm(platformModelToUpsert(current));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "保存平台模型失败。");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm">
+      <PanelHeader
+        title="平台模型"
+        desc="先定义给用户看的平台模型，再通过渠道映射到供应商 endpoint。"
+        actionLabel={saving ? "保存中..." : "保存模型"}
+        disabled={saving || !selectedModel || !form}
+        onAction={save}
+      />
+      <div className="mt-5 grid gap-4 xl:grid-cols-[280px_1fr]">
+        <div className="grid content-start gap-2">
+          {models.map((model) => (
+            <button
+              key={model.id}
+              className={cn(
+                "rounded-2xl border p-3 text-left transition",
+                selectedId === model.id ? "border-sky-300 bg-sky-50 text-sky-800" : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-white",
+              )}
+              type="button"
+              onClick={() => selectModel(model.id)}
+            >
+              <span className="block text-sm font-black">{model.name}</span>
+              <span className="mt-1 block text-xs font-semibold">{model.id}</span>
+            </button>
+          ))}
+        </div>
+        {form && <PlatformModelEditor form={form} onChange={setForm} />}
+      </div>
+      {form && (
+        <details className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-black text-slate-700">查看模型 JSON</summary>
+          <pre className="mt-3 max-h-80 overflow-auto rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-50">{JSON.stringify(form, null, 2)}</pre>
+        </details>
+      )}
+      <p className="mt-3 text-sm font-semibold text-slate-500">{status}</p>
+    </section>
+  );
+}
+
+function NavItemEditor({ item, onChange }: { item: FrontendNavItem; onChange: (item: FrontendNavItem) => void }) {
+  return (
+    <div className="grid gap-2 rounded-2xl bg-white p-3 shadow-sm sm:grid-cols-[1fr_auto_auto] sm:items-center">
+      <label className="grid gap-1">
+        <span className="text-xs font-black text-slate-400">{item.key}</span>
+        <input
+          className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+          value={item.label}
+          onChange={(event) => onChange({ ...item, label: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1">
+        <span className="text-xs font-black text-slate-400">排序</span>
+        <input
+          className="h-10 w-24 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+          type="number"
+          value={item.sortOrder}
+          onChange={(event) => onChange({ ...item, sortOrder: Number(event.target.value) })}
+        />
+      </label>
+      <Toggle checked={item.visible} label="显示" onChange={(visible) => onChange({ ...item, visible })} />
+    </div>
+  );
+}
+
+function CapabilityItemEditor({
+  item,
+  models,
+  onChange,
+}: {
+  item: CapabilityMenuItem;
+  models: Awaited<ReturnType<typeof listRemotePlatformModels>>;
+  onChange: (item: CapabilityMenuItem) => void;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="text-xs font-black text-slate-400">能力名称</span>
+            <input
+              className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+              value={item.label}
+              onChange={(event) => onChange({ ...item, label: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-black text-slate-400">图标</span>
+            <select
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+              value={item.icon}
+              onChange={(event) => onChange({ ...item, icon: event.target.value as CapabilityMenuItem["icon"] })}
+            >
+              {["sparkles", "image", "video", "file-text", "audio", "bot", "workflow", "office"].map((icon) => (
+                <option key={icon} value={icon}>
+                  {icon}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <Toggle checked={item.visible} label="前台显示" onChange={(visible) => onChange({ ...item, visible })} />
+      </div>
+
+      <label className="mt-3 grid gap-1">
+        <span className="text-xs font-black text-slate-400">说明</span>
+        <textarea
+          className="min-h-20 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+          value={item.description}
+          onChange={(event) => onChange({ ...item, description: event.target.value })}
+        />
+      </label>
+
+      <div className="mt-3 grid gap-2">
+        <p className="text-xs font-black text-slate-400">关联平台模型</p>
+        <div className="flex flex-wrap gap-2">
+          {models.map((model) => {
+            const checked = item.modelIds.includes(model.id);
+            return (
+              <button
+                key={model.id}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-black transition",
+                  checked ? "border-sky-300 bg-sky-50 text-sky-700" : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-white",
+                )}
+                type="button"
+                onClick={() =>
+                  onChange({
+                    ...item,
+                    modelIds: checked ? item.modelIds.filter((id) => id !== model.id) : [...item.modelIds, model.id],
+                  })
+                }
+              >
+                {model.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlatformModelEditor({ form, onChange }: { form: PlatformModelUpsert; onChange: (form: PlatformModelUpsert) => void }) {
+  const updateField = <Key extends keyof PlatformModelUpsert>(key: Key, value: PlatformModelUpsert[Key]) => {
+    onChange({ ...form, [key]: value });
+  };
+
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+        <div className="grid gap-3 lg:grid-cols-2">
+          <TextField label="模型 ID" value={form.id ?? ""} onChange={(value) => updateField("id", value)} />
+          <TextField label="前台展示名" value={form.name} onChange={(value) => updateField("name", value)} />
+          <TextField label="短名称" value={form.short_name} onChange={(value) => updateField("short_name", value)} />
+          <label className="grid gap-1">
+            <span className="text-xs font-black text-slate-400">模型分类</span>
+            <select
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+              value={form.modality}
+              onChange={(event) => updateField("modality", event.target.value as PlatformModelUpsert["modality"])}
+            >
+              {["image", "video", "chat", "audio", "workflow"].map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-black text-slate-400">套餐层级</span>
+            <select
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+              value={form.tier}
+              onChange={(event) => updateField("tier", event.target.value as PlatformModelUpsert["tier"])}
+            >
+              {["lite", "standard", "pro", "ultra", "Lite", "Standard", "Pro", "Ultra"].map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+          <TextField label="预计消耗" value={form.estimated_cost} onChange={(value) => updateField("estimated_cost", value)} />
+          <TextField label="预计时间" value={form.estimated_time} onChange={(value) => updateField("estimated_time", value)} />
+          <TextField label="使用场景（逗号分隔）" value={form.use_cases.join("，")} onChange={(value) => updateField("use_cases", splitList(value))} />
+        </div>
+        <label className="mt-3 grid gap-1">
+          <span className="text-xs font-black text-slate-400">前台说明</span>
+          <textarea
+            className="min-h-24 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold leading-6 text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+            value={form.description}
+            onChange={(event) => updateField("description", event.target.value)}
+          />
+        </label>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <Toggle checked={form.visible} label="前台可见" onChange={(visible) => updateField("visible", visible)} />
+          <Toggle checked={form.recommended} label="推荐" onChange={(recommended) => updateField("recommended", recommended)} />
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-slate-950">参数配置</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">前台创作表单会按这些参数实时渲染。</p>
+          </div>
+          <button
+            className="h-9 rounded-full bg-slate-950 px-3 text-xs font-black text-white"
+            type="button"
+            onClick={() =>
+              updateField("schema", [
+                ...(form.schema ?? []),
+                { key: `param_${(form.schema ?? []).length + 1}`, label: "新参数", type: "text", required: false },
+              ])
+            }
+          >
+            新增参数
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3">
+          {(form.schema ?? []).map((field, index) => (
+            <SchemaFieldEditor
+              key={`${field.key}-${index}`}
+              field={field}
+              onChange={(next) => updateField("schema", (form.schema ?? []).map((item, itemIndex) => (itemIndex === index ? next : item)))}
+              onRemove={() => updateField("schema", (form.schema ?? []).filter((_, itemIndex) => itemIndex !== index))}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SchemaFieldEditor({
+  field,
+  onChange,
+  onRemove,
+}: {
+  field: NonNullable<PlatformModelUpsert["schema"]>[number];
+  onChange: (field: NonNullable<PlatformModelUpsert["schema"]>[number]) => void;
+  onRemove: () => void;
+}) {
+  const optionsText = Array.isArray(field.options)
+    ? field.options.map((option) => (typeof option === "string" ? option : `${option.label}:${option.value}`)).join("，")
+    : "";
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      <div className="grid gap-2 lg:grid-cols-[1fr_1fr_150px_1fr_auto] lg:items-end">
+        <TextField label="参数 key" value={field.key} onChange={(value) => onChange({ ...field, key: value })} />
+        <TextField label="前台名称" value={field.label} onChange={(value) => onChange({ ...field, label: value })} />
+        <label className="grid gap-1">
+          <span className="text-xs font-black text-slate-400">控件类型</span>
+          <select
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none"
+            value={field.type}
+            onChange={(event) => onChange({ ...field, type: event.target.value as NonNullable<PlatformModelUpsert["schema"]>[number]["type"] })}
+          >
+            {["textarea", "text", "select", "segmented", "slider", "file", "switch"].map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextField label="默认值" value={String(field.defaultValue ?? field.value ?? "")} onChange={(value) => onChange({ ...field, defaultValue: coerceFieldValue(field.type, value), value: coerceFieldValue(field.type, value) })} />
+        <button className="h-10 rounded-xl bg-rose-50 px-3 text-xs font-black text-rose-600" type="button" onClick={onRemove}>
+          删除
+        </button>
+      </div>
+      <div className="mt-2 grid gap-2 lg:grid-cols-[1fr_100px_100px_100px_auto_auto] lg:items-end">
+        <TextField label="选项（label:value，逗号分隔）" value={optionsText} onChange={(value) => onChange({ ...field, options: parseOptions(value) })} />
+        <TextField label="最小值" value={field.min === undefined ? "" : String(field.min)} onChange={(value) => onChange({ ...field, min: value === "" ? undefined : Number(value) })} />
+        <TextField label="最大值" value={field.max === undefined ? "" : String(field.max)} onChange={(value) => onChange({ ...field, max: value === "" ? undefined : Number(value) })} />
+        <TextField label="步长" value={field.step === undefined ? "" : String(field.step)} onChange={(value) => onChange({ ...field, step: value === "" ? undefined : Number(value) })} />
+        <Toggle checked={Boolean(field.required)} label="必填" onChange={(required) => onChange({ ...field, required })} />
+        <Toggle checked={Boolean(field.advanced)} label="高级" onChange={(advanced) => onChange({ ...field, advanced })} />
+      </div>
+      <TextField label="提示文案" value={field.placeholder ?? ""} onChange={(value) => onChange({ ...field, placeholder: value })} />
+    </div>
+  );
+}
+
+function PanelHeader({
+  actionLabel,
+  desc,
+  disabled,
+  onAction,
+  title,
+}: {
+  actionLabel: string;
+  desc: string;
+  disabled?: boolean;
+  onAction: () => void;
+  title: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-lg font-black text-slate-950">{title}</p>
+        <p className="mt-1 text-sm font-semibold text-slate-500">{desc}</p>
+      </div>
+      <button
+        className="inline-flex h-10 items-center justify-center rounded-full bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+        type="button"
+        disabled={disabled}
+        onClick={onAction}
+      >
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
+
+function TextField({ label, onChange, value }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-xs font-black text-slate-400">{label}</span>
+      <input
+        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function Toggle({ checked, label, onChange }: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return (
+    <button
+      className={cn(
+        "inline-flex h-10 items-center justify-center rounded-xl px-3 text-xs font-black transition",
+        checked ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-500 hover:bg-white",
+      )}
+      type="button"
+      onClick={() => onChange(!checked)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function platformModelToUpsert(model: Awaited<ReturnType<typeof listRemotePlatformModels>>[number]): PlatformModelUpsert {
+  return {
+    id: model.id,
+    name: model.name,
+    short_name: model.shortName,
+    modality: model.modality,
+    tier: model.tier,
+    description: model.description,
+    use_cases: model.useCases,
+    visible: true,
+    recommended: Boolean(model.recommended),
+    estimated_cost: model.price,
+    estimated_time: model.eta,
+    sort_order: 10,
+    schema: model.schema,
+  };
+}
+
+function splitList(value: string) {
+  return value
+    .split(/[，,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseOptions(value: string) {
+  return splitList(value).map((item) => {
+    const [label, rawValue] = item.split(":");
+    const optionValue = rawValue ?? label;
+    return {
+      label: label.trim(),
+      value: optionValue.trim(),
+    };
+  });
+}
+
+function coerceFieldValue(type: string, value: string) {
+  if (type === "switch") {
+    return value === "true";
+  }
+
+  if (type === "slider" && value !== "") {
+    return Number(value);
+  }
+
+  return value;
 }

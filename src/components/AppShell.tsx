@@ -1,14 +1,16 @@
 import { AnimatePresence, motion } from "framer-motion";
-import type { AccountSection, AppRoute, Template, UserProfile } from "../types";
+import type { AccountSection, AppRoute, FrontendNavItem, Template, UserProfile } from "../types";
 import { TopNav } from "./TopNav";
 import { WorkspacePage } from "./workspace/WorkspacePage";
 import { ExplorePage } from "./explore/ExplorePage";
 import { AccountPage } from "./account/AccountPage";
+import { AccountLibrary } from "./account/AccountLibrary";
 import { AdminPlaceholder } from "./admin/AdminPlaceholder";
 
 type AppShellProps = {
   accountSection: AccountSection;
   isAdmin: boolean;
+  navItems: FrontendNavItem[] | null;
   route: AppRoute;
   templatePrompt: string;
   user: UserProfile;
@@ -20,6 +22,7 @@ type AppShellProps = {
 export function AppShell({
   accountSection,
   isAdmin,
+  navItems,
   route,
   templatePrompt,
   user,
@@ -33,7 +36,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-[#f8faf7] text-slate-950">
-      <TopNav route={route} user={user} onNavigate={onNavigate} />
+      <TopNav navItems={navItems} route={route} user={user} onNavigate={onNavigate} />
       <AnimatePresence mode="wait">
         <motion.main
           key={route}
@@ -45,6 +48,11 @@ export function AppShell({
         >
           {route === "workspace" && <WorkspacePage templatePrompt={templatePrompt} />}
           {route === "explore" && <ExplorePage onUseTemplate={onUseTemplate} />}
+          {route === "library" && (
+            <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:py-8">
+              <AccountLibrary onNavigate={onNavigate} />
+            </div>
+          )}
           {route === "account" && (
             <AccountPage
               activeSection={accountSection}

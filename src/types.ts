@@ -1,10 +1,11 @@
 import type { LucideIcon } from "lucide-react";
+import type { RouteMode } from "./productData";
 
-export type AppRoute = "workspace" | "explore" | "account" | "admin";
+export type AppRoute = "workspace" | "explore" | "library" | "account" | "admin";
 
 export type AccountSection = "assets" | "library" | "presets" | "orders" | "settings";
 
-export type CapabilityCategory = "all" | "chat" | "image" | "video" | "audio" | "my";
+export type CapabilityCategory = "all" | "image" | "video" | "chat" | "audio" | "workflow" | "agent" | "office" | "copywriting" | "my";
 
 export type CreativeModelCategory = Exclude<CapabilityCategory, "all" | "my">;
 
@@ -16,7 +17,7 @@ export type CreativeControlOption = {
 export type CreativeControl = {
   key: string;
   label: string;
-  type: "textarea" | "text" | "select" | "segmented" | "slider" | "switch" | "number";
+  type: "textarea" | "text" | "select" | "segmented" | "slider" | "switch" | "number" | "file";
   required?: boolean;
   advanced?: boolean;
   helper?: string;
@@ -25,6 +26,29 @@ export type CreativeControl = {
   max?: number;
   step?: number;
   options?: CreativeControlOption[];
+};
+
+export type FrontendNavItem = {
+  key: AppRoute;
+  label: string;
+  visible: boolean;
+  sortOrder: number;
+};
+
+export type CapabilityMenuItem = {
+  key: CapabilityCategory;
+  label: string;
+  description: string;
+  icon: "sparkles" | "image" | "video" | "file-text" | "audio" | "bot" | "workflow" | "office";
+  modelIds: string[];
+  visible: boolean;
+  sortOrder: number;
+};
+
+export type FrontendConfig = {
+  navItems: FrontendNavItem[];
+  capabilityMenu: CapabilityMenuItem[];
+  defaultRouteMode: RouteMode;
 };
 
 export type CreativeModel = {
@@ -42,6 +66,7 @@ export type CreativeModel = {
   favorite?: boolean;
   health?: number;
   subtitle?: string;
+  routeMode?: RouteMode;
 };
 
 export type Template = {

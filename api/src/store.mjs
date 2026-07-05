@@ -164,6 +164,80 @@ export const parameterMappings = [
   { channelId: "ch-cangyuan-gpt-image-2-4k", platform: "async", upstream: "async", transform: "direct", defaultValue: true },
 ];
 
+export const frontendConfig = {
+  navItems: [
+    { key: "workspace", label: "创作工作台", visible: true, sortOrder: 10 },
+    { key: "explore", label: "探索/市场", visible: true, sortOrder: 20 },
+    { key: "library", label: "作品库", visible: true, sortOrder: 30 },
+  ],
+  capabilityMenu: [
+    {
+      key: "image",
+      label: "图片",
+      description: "AI 绘图、商品图、局部重绘、扩图、高清修复和换背景。",
+      icon: "image",
+      modelIds: ["tikpan.image.gpt-image-2-4k"],
+      visible: true,
+      sortOrder: 10,
+    },
+    {
+      key: "video",
+      label: "视频",
+      description: "文生视频、图生视频、产品短片和动态海报。",
+      icon: "video",
+      modelIds: [],
+      visible: true,
+      sortOrder: 20,
+    },
+    {
+      key: "copywriting",
+      label: "文案",
+      description: "标题、种草文案、脚本、详情页和营销内容。",
+      icon: "file-text",
+      modelIds: [],
+      visible: true,
+      sortOrder: 30,
+    },
+    {
+      key: "audio",
+      label: "音频",
+      description: "配音、旁白、口播和播客内容。",
+      icon: "audio",
+      modelIds: [],
+      visible: true,
+      sortOrder: 40,
+    },
+    {
+      key: "office",
+      label: "办公",
+      description: "文档、表格、PPT 和团队知识处理。",
+      icon: "office",
+      modelIds: [],
+      visible: true,
+      sortOrder: 50,
+    },
+    {
+      key: "agent",
+      label: "Agent",
+      description: "可配置的智能体、角色和自动执行助手。",
+      icon: "bot",
+      modelIds: [],
+      visible: true,
+      sortOrder: 60,
+    },
+    {
+      key: "workflow",
+      label: "工作流",
+      description: "把图片、视频、文案和业务动作编排成复用流程。",
+      icon: "workflow",
+      modelIds: [],
+      visible: true,
+      sortOrder: 70,
+    },
+  ],
+  defaultRouteMode: "balanced",
+};
+
 export const tasks = [];
 export const presets = [];
 export const assetMetadata = [];

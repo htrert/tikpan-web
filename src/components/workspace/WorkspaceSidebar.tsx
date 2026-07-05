@@ -1,14 +1,15 @@
-import { Bot, History, Image, Plus, Search, Sparkles, Video } from "lucide-react";
-import type { CapabilityCategory, CreativeModel } from "../../types";
+import { Bot, BriefcaseBusiness, FileText, History, Image, Layers3, Mic2, Plus, Search, Sparkles, Video } from "lucide-react";
+import type { CapabilityCategory, CapabilityMenuItem, CreativeModel } from "../../types";
 import { currentUser } from "../../appData";
 import { cn, formatTokens } from "../../lib";
 import { ModelCard } from "./ModelCard";
 
 type WorkspaceSidebarProps = {
   category: CapabilityCategory;
+  catalogError?: string;
   query: string;
   selectedModelId: string;
-  tabs: Array<{ key: CapabilityCategory; label: string }>;
+  tabs: CapabilityMenuItem[];
   models: CreativeModel[];
   onCategoryChange: (category: CapabilityCategory) => void;
   onModelSelect: (model: CreativeModel) => void;
@@ -17,6 +18,7 @@ type WorkspaceSidebarProps = {
 
 export function WorkspaceSidebar({
   category,
+  catalogError,
   query,
   selectedModelId,
   tabs,
@@ -50,42 +52,32 @@ export function WorkspaceSidebar({
         新建创作
       </button>
 
-      <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: "大模型", icon: Sparkles, active: true },
-          { label: "智能体", icon: Bot, active: false },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.label}
-              className={cn(
-                "flex h-14 flex-col items-center justify-center gap-1 rounded-2xl border text-xs font-black shadow-sm transition",
-                item.active
-                  ? "border-violet-200 bg-violet-100/80 text-violet-700"
-                  : "border-transparent bg-white/70 text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-950",
-              )}
-              type="button"
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
+      {catalogError && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs font-bold leading-5 text-amber-700">
+          {catalogError}
+        </div>
+      )}
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="grid gap-2">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             className={cn(
-              "h-8 rounded-lg px-2.5 text-xs font-black transition",
-              category === tab.key ? "bg-violet-100 text-violet-700" : "text-slate-500 hover:bg-white/80 hover:text-slate-950",
+              "flex items-start gap-3 rounded-2xl border p-3 text-left transition",
+              category === tab.key
+                ? "border-violet-200 bg-violet-100/80 text-violet-700 shadow-sm"
+                : "border-transparent bg-white/70 text-slate-600 hover:border-slate-200 hover:bg-white hover:text-slate-950",
             )}
             type="button"
             onClick={() => onCategoryChange(tab.key)}
           >
-            {tab.label}
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white shadow-sm">
+              <CapabilityIcon name={tab.icon} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-black">{tab.label}</span>
+              <span className="mt-1 line-clamp-2 block text-xs font-semibold leading-5 text-slate-500">{tab.description}</span>
+            </span>
           </button>
         ))}
       </div>
@@ -137,4 +129,19 @@ export function WorkspaceSidebar({
       </div>
     </div>
   );
+}
+
+function CapabilityIcon({ name }: { name: CapabilityMenuItem["icon"] }) {
+  const icons = {
+    sparkles: Sparkles,
+    image: Image,
+    video: Video,
+    "file-text": FileText,
+    audio: Mic2,
+    bot: Bot,
+    workflow: Layers3,
+    office: BriefcaseBusiness,
+  };
+  const Icon = icons[name] ?? Sparkles;
+  return <Icon className="h-4 w-4" />;
 }

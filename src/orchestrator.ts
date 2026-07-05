@@ -104,7 +104,8 @@ export function buildDefaultInput(schema: SchemaField[]): StudioInput {
     }
 
     if (field.options?.[0]) {
-      acc[field.key] = field.options[0].value;
+      const firstOption = field.options[0];
+      acc[field.key] = typeof firstOption === "string" ? firstOption : firstOption.value;
     }
 
     return acc;

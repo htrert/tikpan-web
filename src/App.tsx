@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "./components/AppShell";
 import { currentUser } from "./appData";
-import type { AccountSection, AppRoute, Template } from "./types";
+import { getFrontendConfig } from "./apiClient";
+import type { AccountSection, AppRoute, FrontendNavItem, Template } from "./types";
 
 function routeFromPath(pathname: string): AppRoute {
   if (pathname.startsWith("/explore")) return "explore";
+  if (pathname.startsWith("/library")) return "library";
   if (pathname.startsWith("/account")) return "account";
   if (pathname.startsWith("/admin")) return "admin";
   return "workspace";
@@ -12,6 +14,7 @@ function routeFromPath(pathname: string): AppRoute {
 
 function pathForRoute(route: AppRoute) {
   if (route === "explore") return "/explore";
+  if (route === "library") return "/library";
   if (route === "account") return "/account";
   if (route === "admin") return "/admin";
   return "/workspace";
@@ -22,6 +25,7 @@ function App() {
     typeof window === "undefined" ? "workspace" : routeFromPath(window.location.pathname),
   );
   const [accountSection, setAccountSection] = useState<AccountSection>("assets");
+  const [navItems, setNavItems] = useState<FrontendNavItem[] | null>(null);
   const [templatePrompt, setTemplatePrompt] = useState("");
 
   useEffect(() => {
@@ -31,6 +35,21 @@ function App() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getFrontendConfig()
+      .then((config) => {
+        if (!cancelled) setNavItems(config.navItems);
+      })
+      .catch(() => {
+        if (!cancelled) setNavItems(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const navigate = useMemo(
@@ -55,6 +74,7 @@ function App() {
     <AppShell
       accountSection={accountSection}
       isAdmin={currentUser.role === "admin"}
+      navItems={navItems}
       route={route}
       templatePrompt={templatePrompt}
       user={currentUser}

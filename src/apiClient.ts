@@ -1,5 +1,7 @@
 import type { OrchestratedTask, StudioInput, TaskAttempt } from "./orchestrator";
 import type { Channel, FieldType, PlatformModel, Provider, ProviderModel, RouteMode, SchemaField } from "./productData";
+import { platformModels as localPlatformModels } from "./productData";
+import type { CapabilityCategory, CreativeControl, CreativeModel, CreativeModelCategory, FrontendConfig } from "./types";
 
 const apiBaseUrl = import.meta.env.VITE_TIKPAN_API_URL ?? "http://localhost:8787";
 const configuredAdminToken = import.meta.env.VITE_TIKPAN_ADMIN_TOKEN ?? "";
@@ -958,6 +960,10 @@ type PublicModelSchemaResponse = {
   };
 };
 
+type FrontendConfigResponse = {
+  data: FrontendConfig;
+};
+
 export type PlatformModelUpsert = {
   id?: string;
   name: string;
@@ -1279,6 +1285,40 @@ export async function createRemoteTask({
   return mapApiTaskToPreview(payload as ApiTaskResponse, model, routeMode);
 }
 
+export async function createRemoteTaskByModelId({
+  apiKey,
+  input,
+  modelId,
+  routeMode,
+}: {
+  apiKey?: string | null;
+  input: StudioInput;
+  modelId: string;
+  routeMode: RouteMode;
+}): Promise<RemoteTaskRecord> {
+  const response = await fetch(`${apiBaseUrl}/v1/tasks`, {
+    method: "POST",
+    headers: apiHeaders(apiKey, {
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({
+      model: modelId,
+      input,
+      routing: {
+        mode: routeMode,
+      },
+    }),
+  });
+
+  const payload = (await response.json()) as ApiTaskResponse | ProblemDetails;
+
+  if (!response.ok) {
+    throw new Error(formatProblem(payload as ProblemDetails));
+  }
+
+  return (payload as ApiTaskResponse).data;
+}
+
 export async function createRemoteTaskBatch({
   apiKey,
   items,
@@ -1354,6 +1394,19 @@ export async function getRemoteTask({
   }
 
   return mapApiTaskToPreview(payload as ApiTaskResponse, model, routeMode, previousTask);
+}
+
+export async function getRemoteTaskRecord(taskId: string, apiKey?: string | null): Promise<RemoteTaskRecord> {
+  const response = await fetch(`${apiBaseUrl}/v1/tasks/${encodeURIComponent(taskId)}`, {
+    headers: apiHeaders(apiKey),
+  });
+  const payload = (await response.json()) as ApiTaskResponse | ProblemDetails;
+
+  if (!response.ok) {
+    throw new Error(formatProblem(payload as ProblemDetails));
+  }
+
+  return (payload as ApiTaskResponse).data;
 }
 
 export async function cancelRemoteTask({
@@ -2051,6 +2104,39 @@ export async function listPublicCapabilities(localModels: PlatformModel[]): Prom
   return mergeRemotePlatformModels(localModels, (payload as PlatformModelsResponse).data);
 }
 
+export async function listPublicCreativeModels(): Promise<CreativeModel[]> {
+  const models = await listPublicCapabilities(localPlatformModels);
+  return models.map(mapPlatformModelToCreativeModel);
+}
+
+export async function getFrontendConfig(): Promise<FrontendConfig> {
+  const response = await fetch(`${apiBaseUrl}/v1/frontend-config`);
+  const payload = (await response.json()) as FrontendConfigResponse | ProblemDetails;
+
+  if (!response.ok) {
+    throw new Error(formatProblem(payload as ProblemDetails));
+  }
+
+  return (payload as FrontendConfigResponse).data;
+}
+
+export async function updateFrontendConfig(input: FrontendConfig): Promise<FrontendConfig> {
+  const response = await fetch(`${apiBaseUrl}/admin/frontend-config`, {
+    method: "PUT",
+    headers: adminHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json()) as FrontendConfigResponse | ProblemDetails;
+
+  if (!response.ok) {
+    throw new Error(formatProblem(payload as ProblemDetails));
+  }
+
+  return (payload as FrontendConfigResponse).data;
+}
+
 export async function getPublicModelSchema(modelId: string): Promise<SchemaField[]> {
   const response = await fetch(`${apiBaseUrl}/v1/models/${encodeURIComponent(modelId)}/schema`);
   const payload = (await response.json()) as PublicModelSchemaResponse | ProblemDetails;
@@ -2239,9 +2325,90 @@ function mergeRemotePlatformModels(localModels: PlatformModel[], remoteModels: R
 function normalizeRemoteSchema(schema: SchemaField[]): SchemaField[] {
   return schema.map((field) => ({
     ...field,
+    options: normalizeRemoteOptions(field.options),
     value: field.value ?? field.defaultValue,
     defaultValue: field.defaultValue ?? field.value,
   }));
+}
+
+function normalizeRemoteOptions(options: SchemaField["options"]) {
+  if (!Array.isArray(options)) {
+    return undefined;
+  }
+
+  return options.map((option) => {
+    if (typeof option === "object" && option !== null && "value" in option) {
+      return option;
+    }
+    return {
+      label: String(option),
+      value: String(option),
+    };
+  });
+}
+
+function mapPlatformModelToCreativeModel(model: PlatformModel): CreativeModel {
+  const category = modalityToCreativeCategory(model.modality);
+
+  return {
+    id: model.id,
+    name: model.name,
+    category,
+    group: groupForCategory(category),
+    provider: model.shortName,
+    subtitle: model.tagline || model.useCases.slice(0, 3).join(" / "),
+    description: model.description,
+    bestFor: model.useCases,
+    tags: [model.tier, ...model.useCases].filter(Boolean).slice(0, 4),
+    cost: parseCost(model.price),
+    health: Math.round(model.stability || 98),
+    favorite: Boolean(model.recommended),
+    controls: model.schema.map(mapSchemaFieldToCreativeControl),
+    icon: model.icon,
+  };
+}
+
+function mapSchemaFieldToCreativeControl(field: SchemaField): CreativeControl {
+  return {
+    key: field.key,
+    label: field.label,
+    type: field.type === "file" ? "file" : field.type,
+    required: field.required,
+    advanced: field.advanced,
+    helper: field.placeholder,
+    defaultValue: field.defaultValue ?? field.value,
+    min: field.min,
+    max: field.max,
+    step: field.step,
+    options: normalizeRemoteOptions(field.options)?.map((option) => ({
+      label: option.label,
+      value: option.value,
+    })),
+  };
+}
+
+function modalityToCreativeCategory(modality: PlatformModel["modality"]): CreativeModelCategory {
+  if (modality === "workflow") return "workflow";
+  return modality;
+}
+
+function groupForCategory(category: CapabilityCategory) {
+  const groups: Partial<Record<CapabilityCategory, string>> = {
+    image: "图片能力",
+    video: "视频能力",
+    chat: "文案与对话",
+    audio: "音频能力",
+    workflow: "工作流",
+    agent: "Agent",
+    office: "办公",
+    copywriting: "文案",
+  };
+  return groups[category] ?? "AI 能力";
+}
+
+function parseCost(value: string) {
+  const match = value.match(/\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : 0;
 }
 
 export async function listRemoteApiKeys(userId = "demo_user"): Promise<PlatformApiKey[]> {

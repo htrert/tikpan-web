@@ -1,20 +1,24 @@
 import { Bell, CreditCard, Sparkles } from "lucide-react";
-import type { AccountSection, AppRoute, UserProfile } from "../types";
+import type { AccountSection, AppRoute, FrontendNavItem, UserProfile } from "../types";
 import { cn } from "../lib";
 import { TokenBadge } from "./TokenBadge";
 import { UserMenu } from "./UserMenu";
 
 type TopNavProps = {
+  navItems: FrontendNavItem[] | null;
   route: AppRoute;
   user: UserProfile;
   onNavigate: (route: AppRoute, section?: AccountSection) => void;
 };
 
-export function TopNav({ route, user, onNavigate }: TopNavProps) {
-  const navItems: Array<{ route: AppRoute; label: string }> = [
-    { route: "workspace", label: "创作工作台" },
-    { route: "explore", label: "探索广场" },
-  ];
+export function TopNav({ navItems, route, user, onNavigate }: TopNavProps) {
+  const visibleNavItems =
+    navItems?.filter((item) => item.visible).sort((a, b) => a.sortOrder - b.sortOrder) ??
+    ([
+      { key: "workspace", label: "创作工作台", visible: true, sortOrder: 10 },
+      { key: "explore", label: "探索/市场", visible: true, sortOrder: 20 },
+      { key: "library", label: "作品库", visible: true, sortOrder: 30 },
+    ] satisfies FrontendNavItem[]);
 
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-white/70 bg-[#f8faf7]/80 backdrop-blur-2xl">
@@ -31,15 +35,15 @@ export function TopNav({ route, user, onNavigate }: TopNavProps) {
         </button>
 
         <nav className="flex shrink-0 rounded-full border border-slate-200/70 bg-white/70 p-1 shadow-sm">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
-              key={item.route}
+              key={item.key}
               className={cn(
                 "h-9 rounded-full px-3 text-sm font-bold transition sm:px-5",
-                route === item.route ? "bg-slate-950 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                route === item.key ? "bg-slate-950 text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
               )}
               type="button"
-              onClick={() => onNavigate(item.route)}
+              onClick={() => onNavigate(item.key)}
             >
               {item.label}
             </button>

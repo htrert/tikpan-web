@@ -1,4 +1,5 @@
 import { getDb } from "../db/client.mjs";
+import { frontendConfig as defaultFrontendConfig } from "../store.mjs";
 
 const cache = {
   ready: false,
@@ -8,6 +9,7 @@ const cache = {
   platformModels: [],
   channels: [],
   parameterMappings: [],
+  frontendConfig: JSON.parse(JSON.stringify(defaultFrontendConfig)),
 };
 
 export const postgresCatalogRepository = {
@@ -77,6 +79,15 @@ export const postgresCatalogRepository = {
 
   listChannels() {
     return cache.channels;
+  },
+
+  getFrontendConfig() {
+    return cache.frontendConfig;
+  },
+
+  updateFrontendConfig(config) {
+    cache.frontendConfig = config;
+    return cache.frontendConfig;
   },
 
   getProvider(id) {

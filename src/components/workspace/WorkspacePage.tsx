@@ -1,33 +1,95 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, Sparkles, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { capabilityTabs, creativeModels, currentUser } from "../../appData";
-import type { CapabilityCategory, CreativeModel } from "../../types";
-import { cn } from "../../lib";
+import {
+  createRemoteTaskByModelId,
+  getFrontendConfig,
+  getRemoteTaskRecord,
+  listPublicCreativeModels,
+  type RemoteTaskRecord,
+} from "../../apiClient";
+import type { StudioInput } from "../../orchestrator";
+import type { CapabilityCategory, CapabilityMenuItem, CreativeModel, FrontendConfig } from "../../types";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { ResultPanel } from "./ResultPanel";
 import { PromptComposer } from "./PromptComposer";
 import { WorkspaceTopBar } from "./WorkspaceTopBar";
 
 export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
-  const [category, setCategory] = useState<CapabilityCategory>("all");
+  const [frontendConfig, setFrontendConfig] = useState<FrontendConfig | null>(null);
+  const [remoteModels, setRemoteModels] = useState<CreativeModel[]>(creativeModels);
+  const [catalogError, setCatalogError] = useState("");
+  const [category, setCategory] = useState<CapabilityCategory>("image");
   const [query, setQuery] = useState("");
   const [selectedModelId, setSelectedModelId] = useState(creativeModels[0].id);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [generatedPrompt, setGeneratedPrompt] = useState("");
+  const [activeTask, setActiveTask] = useState<RemoteTaskRecord | null>(null);
+  const [taskError, setTaskError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCatalog() {
+      try {
+        const [config, models] = await Promise.all([getFrontendConfig(), listPublicCreativeModels()]);
+        if (cancelled) return;
+        setFrontendConfig(config);
+        setRemoteModels(models.length > 0 ? models : creativeModels);
+        const defaultCapability = config.capabilityMenu.find((item) => item.visible && item.modelIds.length > 0)?.key ?? "image";
+        setCategory(defaultCapability);
+        const defaultModelId = config.capabilityMenu.find((item) => item.key === defaultCapability)?.modelIds[0] ?? models[0]?.id;
+        if (defaultModelId) setSelectedModelId(defaultModelId);
+      } catch (error) {
+        if (!cancelled) {
+          setCatalogError(error instanceof Error ? error.message : "后端能力目录读取失败，已使用本地演示数据。");
+        }
+      }
+    }
+
+    void loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const capabilityMenu = useMemo<CapabilityMenuItem[]>(() => {
+    if (frontendConfig?.capabilityMenu.length) {
+      return frontendConfig.capabilityMenu.filter((item) => item.visible);
+    }
+
+    return capabilityTabs
+      .filter((tab) => tab.key !== "all" && tab.key !== "my")
+      .map((tab, index) => ({
+        key: tab.key,
+        label: tab.label,
+        description: "",
+        icon: tab.key === "image" ? "image" : tab.key === "video" ? "video" : tab.key === "audio" ? "audio" : "sparkles",
+        modelIds: creativeModels.filter((model) => model.category === tab.key).map((model) => model.id),
+        visible: true,
+        sortOrder: index * 10,
+      }));
+  }, [frontendConfig]);
+
+  const models = remoteModels;
 
   const filteredModels = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return creativeModels.filter((model) => {
-      const matchesCategory = category === "all" || (category === "my" ? model.favorite : model.category === category);
+    const activeCapability = capabilityMenu.find((item) => item.key === category);
+    return models.filter((model) => {
+      const configuredIds = activeCapability?.modelIds ?? [];
+      const matchesCategory =
+        category === "all" ||
+        (category === "my" ? model.favorite : configuredIds.length > 0 ? configuredIds.includes(model.id) : model.category === category);
       const matchesQuery =
         !normalizedQuery ||
         [model.name, model.group, model.description, ...model.bestFor, ...model.tags].some((item) => item.toLowerCase().includes(normalizedQuery));
       return matchesCategory && matchesQuery;
     });
-  }, [category, query]);
+  }, [capabilityMenu, category, models, query]);
 
-  const selectedModel = creativeModels.find((model) => model.id === selectedModelId) ?? creativeModels[0];
+  const selectedModel = models.find((model) => model.id === selectedModelId) ?? filteredModels[0] ?? models[0] ?? creativeModels[0];
 
   const selectModel = (model: CreativeModel) => {
     setSelectedModelId(model.id);
@@ -36,10 +98,44 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
 
   const changeCategory = (nextCategory: CapabilityCategory) => {
     setCategory(nextCategory);
-    const nextModel = creativeModels.find((model) =>
-      nextCategory === "all" || (nextCategory === "my" ? model.favorite : model.category === nextCategory),
+    const menuItem = capabilityMenu.find((item) => item.key === nextCategory);
+    const nextModel = models.find((model) =>
+      nextCategory === "all" ||
+      (nextCategory === "my" ? model.favorite : menuItem?.modelIds.length ? menuItem.modelIds.includes(model.id) : model.category === nextCategory),
     );
     if (nextModel) setSelectedModelId(nextModel.id);
+  };
+
+  const handleGenerate = async (input: StudioInput) => {
+    setTaskError("");
+    setActiveTask(null);
+    setGeneratedPrompt(String(input.prompt ?? input.message ?? input.script ?? input.product ?? ""));
+
+    try {
+      const created = await createRemoteTaskByModelId({
+        modelId: selectedModel.id,
+        input,
+        routeMode: frontendConfig?.defaultRouteMode ?? selectedModel.routeMode ?? "balanced",
+      });
+      setActiveTask(created);
+
+      if (["completed", "failed", "cancelled", "expired"].includes(created.status)) {
+        if (created.status === "failed") setTaskError(created.error?.message ?? created.message ?? "后端任务失败。");
+        return;
+      }
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 900));
+        const nextTask = await getRemoteTaskRecord(created.task_id);
+        setActiveTask(nextTask);
+        if (["completed", "failed", "cancelled", "expired"].includes(nextTask.status)) {
+          if (nextTask.status === "failed") setTaskError(nextTask.error?.message ?? nextTask.message ?? "后端任务失败。");
+          break;
+        }
+      }
+    } catch (error) {
+      setTaskError(error instanceof Error ? error.message : "后端生成请求失败。");
+    }
   };
 
   return (
@@ -50,8 +146,9 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
             category={category}
             query={query}
             selectedModelId={selectedModel.id}
-            tabs={capabilityTabs}
+            tabs={capabilityMenu}
             models={filteredModels}
+            catalogError={catalogError}
             onCategoryChange={changeCategory}
             onModelSelect={selectModel}
             onQueryChange={setQuery}
@@ -73,8 +170,8 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
 
           <WorkspaceTopBar model={selectedModel} user={currentUser} />
           <section className="flex min-h-[calc(100vh-184px)] flex-col gap-4 pb-6">
-            <ResultPanel generatedPrompt={generatedPrompt} model={selectedModel} />
-            <PromptComposer initialPrompt={templatePrompt} model={selectedModel} onGenerate={setGeneratedPrompt} />
+            <ResultPanel error={taskError} generatedPrompt={generatedPrompt} model={selectedModel} task={activeTask} />
+            <PromptComposer initialPrompt={templatePrompt} model={selectedModel} onGenerate={handleGenerate} />
           </section>
         </div>
       </div>
@@ -112,8 +209,9 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
                 category={category}
                 query={query}
                 selectedModelId={selectedModel.id}
-                tabs={capabilityTabs}
+                tabs={capabilityMenu}
                 models={filteredModels}
+                catalogError={catalogError}
                 onCategoryChange={changeCategory}
                 onModelSelect={selectModel}
                 onQueryChange={setQuery}

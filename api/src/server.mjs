@@ -62,6 +62,10 @@ const allowedPaymentProviderKinds = new Set(["mock", "manual", "alipay", "wechat
 const allowedPaymentProviderStatuses = new Set(["active", "testing", "disabled"]);
 const allowedPaymentCheckoutModes = new Set(["mock", "hosted", "qr_code", "manual", "redirect"]);
 const allowedAssetReviewStatuses = new Set(["candidate", "approved", "needs_changes", "archived"]);
+const allowedFrontendRoutes = new Set(["workspace", "explore", "library", "account", "admin"]);
+const allowedCapabilityMenuKeys = new Set(["all", "image", "video", "chat", "audio", "workflow", "agent", "office", "copywriting", "my"]);
+const allowedCapabilityIcons = new Set(["sparkles", "image", "video", "file-text", "audio", "bot", "workflow", "office"]);
+const allowedRouteModes = new Set(["quality", "balanced", "fast", "cheap", "stable"]);
 
 const server = createServer(async (req, res) => {
   try {
@@ -139,6 +143,11 @@ async function route(req, res) {
   assertAdminAuthorized(req, url);
 
   assertSupportedRepositoryMode();
+
+  if (method === "GET" && url.pathname === "/v1/frontend-config") {
+    sendJson(res, 200, { data: publicFrontendConfig() });
+    return;
+  }
 
   if (method === "GET" && url.pathname === "/v1/capabilities") {
     sendJson(res, 200, {
@@ -709,6 +718,26 @@ async function route(req, res) {
 
   if (method === "GET" && url.pathname === "/admin/providers") {
     sendJson(res, 200, { data: catalogRepository.listProviders() });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/admin/frontend-config") {
+    sendJson(res, 200, { data: publicFrontendConfig() });
+    return;
+  }
+
+  if (method === "PUT" && url.pathname === "/admin/frontend-config") {
+    const body = await readJson(req);
+    const config = buildFrontendConfig(body);
+    const saved = catalogRepository.updateFrontendConfig(config);
+    recordAudit({
+      action: "frontend_config.updated",
+      resourceType: "frontend_config",
+      resourceId: "default",
+      summary: "Frontend navigation and capability menu were updated.",
+      metadata: { nav_items: saved.navItems.length, capability_menu: saved.capabilityMenu.length },
+    });
+    sendJson(res, 200, { data: publicFrontendConfig() });
     return;
   }
 
@@ -2986,6 +3015,15 @@ function publicPlatformModel(model) {
   };
 }
 
+function publicFrontendConfig() {
+  const config = catalogRepository.getFrontendConfig();
+  return {
+    navItems: normalizeFrontendNavItems(config.navItems),
+    capabilityMenu: normalizeCapabilityMenu(config.capabilityMenu),
+    defaultRouteMode: allowedRouteModes.has(config.defaultRouteMode) ? config.defaultRouteMode : "balanced",
+  };
+}
+
 function adminPlatformModel(model) {
   return {
     id: model.id,
@@ -3394,6 +3432,91 @@ function buildPlatformModelUpsert(body, existing = null) {
     sortOrder: boundedNumber(body.sort_order ?? body.sortOrder ?? existing?.sortOrder ?? 0, 0, 999999, "Sort order cannot be negative."),
     schema,
   };
+}
+
+function buildFrontendConfig(body) {
+  const navItems = normalizeFrontendNavItems(body.navItems ?? body.nav_items ?? []);
+  const capabilityMenu = normalizeCapabilityMenu(body.capabilityMenu ?? body.capability_menu ?? []);
+  const defaultRouteMode = String(body.defaultRouteMode ?? body.default_route_mode ?? "balanced").trim();
+
+  if (!allowedRouteModes.has(defaultRouteMode)) {
+    throw problem(422, "VALIDATION_ERROR", "Invalid default route mode.");
+  }
+
+  if (navItems.length === 0) {
+    throw problem(422, "VALIDATION_ERROR", "Frontend navigation needs at least one item.");
+  }
+
+  if (capabilityMenu.length === 0) {
+    throw problem(422, "VALIDATION_ERROR", "Capability menu needs at least one item.");
+  }
+
+  return {
+    navItems,
+    capabilityMenu,
+    defaultRouteMode,
+  };
+}
+
+function normalizeFrontendNavItems(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item, index) => {
+      const key = String(item.key ?? item.route ?? "").trim();
+      if (!allowedFrontendRoutes.has(key)) {
+        throw problem(422, "VALIDATION_ERROR", "Invalid frontend route.");
+      }
+      const label = String(item.label ?? key).trim();
+      if (!label) {
+        throw problem(422, "VALIDATION_ERROR", "Navigation label is required.");
+      }
+
+      return {
+        key,
+        label,
+        visible: item.visible === undefined ? true : Boolean(item.visible),
+        sortOrder: boundedNumber(item.sortOrder ?? item.sort_order ?? index * 10, 0, 999999, "Navigation sort order cannot be negative."),
+      };
+    })
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function normalizeCapabilityMenu(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item, index) => {
+      const key = String(item.key ?? "").trim();
+      if (!allowedCapabilityMenuKeys.has(key)) {
+        throw problem(422, "VALIDATION_ERROR", "Invalid capability menu key.");
+      }
+
+      const label = String(item.label ?? key).trim();
+      if (!label) {
+        throw problem(422, "VALIDATION_ERROR", "Capability menu label is required.");
+      }
+
+      const icon = String(item.icon ?? "sparkles").trim();
+      if (!allowedCapabilityIcons.has(icon)) {
+        throw problem(422, "VALIDATION_ERROR", "Invalid capability menu icon.");
+      }
+
+      return {
+        key,
+        label,
+        description: String(item.description ?? "").trim(),
+        icon,
+        modelIds: normalizeStringList(item.modelIds ?? item.model_ids, []),
+        visible: item.visible === undefined ? true : Boolean(item.visible),
+        sortOrder: boundedNumber(item.sortOrder ?? item.sort_order ?? index * 10, 0, 999999, "Capability menu sort order cannot be negative."),
+      };
+    })
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 function buildBillingPlanUpsert(body, existing = null) {

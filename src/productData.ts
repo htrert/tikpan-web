@@ -27,7 +27,7 @@ export type SchemaField = {
   min?: number;
   max?: number;
   step?: number;
-  options?: Array<{ label: string; value: string }>;
+  options?: Array<{ label: string; value: string } | string>;
 };
 
 export type PlatformModel = {

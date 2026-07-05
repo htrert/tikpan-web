@@ -3,6 +3,7 @@ import {
   getPlatformModel,
   getProvider,
   getProviderModel,
+  frontendConfig,
   listChannelsForModel,
   modelChannels,
   parameterMappings,
@@ -124,5 +125,16 @@ export const catalogRepository = {
 
   listParameterMappings() {
     return parameterMappings;
+  },
+
+  getFrontendConfig() {
+    return frontendConfig;
+  },
+
+  updateFrontendConfig(config) {
+    frontendConfig.navItems = config.navItems;
+    frontendConfig.capabilityMenu = config.capabilityMenu;
+    frontendConfig.defaultRouteMode = config.defaultRouteMode;
+    return frontendConfig;
   },
 };
