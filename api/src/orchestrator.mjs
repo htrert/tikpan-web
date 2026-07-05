@@ -153,7 +153,7 @@ export async function quoteTask({ userId = "demo_user", model, input = {}, routi
           : "请先处理余额、套餐或输入项后再生成。",
       wallet,
       usage,
-      route: publicQuoteRoute(decision),
+      route: publicQuoteRoute(decision, input),
     },
   };
 }
@@ -780,16 +780,42 @@ function quoteRoute(decision, input) {
   };
 }
 
-function publicQuoteRoute(decision) {
+function publicQuoteRoute(decision, input = {}) {
+  const channel = decision.channel;
+  const provider = channel ? catalogRepository.getProvider(channel.providerId) : null;
+  const providerModel = channel ? catalogRepository.getProviderModel(channel.providerModelId) : null;
+
   return {
-    channel: null,
-    provider: null,
-    provider_model: null,
-    mapped_payload: null,
-    score_breakdown: [],
+    channel: channel
+      ? {
+          id: channel.id,
+          role: channel.role,
+          status: channel.status,
+          weight: channel.weight,
+          cost_price: channel.costPrice,
+          sale_price: channel.salePrice,
+          latency: channel.latency,
+          success_rate: channel.successRate,
+        }
+      : null,
+    provider: provider
+      ? {
+          id: provider.id,
+          name: provider.name,
+          status: provider.status,
+        }
+      : null,
+    provider_model: providerModel
+      ? {
+          id: providerModel.id,
+          upstream_model_name: providerModel.upstreamModelName,
+        }
+      : null,
+    mapped_payload: channel && providerModel ? mapPayload(channel, providerModel, input) : null,
+    score_breakdown: decision.scoreBreakdown,
     rejected: decision.rejected.map((item) => ({
-      channelId: "",
-      providerName: "",
+      channelId: item.channelId ?? "",
+      providerName: item.providerName ?? "",
       reason: item.reason,
       code: item.code,
       parameters: item.parameters,

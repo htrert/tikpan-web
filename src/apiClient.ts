@@ -2221,6 +2221,7 @@ export function mapAdminChannelToChannel(channel: AdminChannelResponse["data"]):
     id: channel.id,
     platformModelId: channel.platformModelId,
     providerId: channel.providerId,
+    providerModelId: channel.providerModelId,
     providerModel: channel.provider_model?.upstreamModelName ?? channel.providerModelId ?? "unknown",
     role: channel.role,
     status: channel.status,

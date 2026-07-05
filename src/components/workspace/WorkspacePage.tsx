@@ -7,8 +7,10 @@ import {
   getFrontendConfig,
   getRemoteTaskRecord,
   listPublicCreativeModels,
+  quoteRemoteTask,
   type RemoteTaskRecord,
 } from "../../apiClient";
+import { platformModels as localPlatformModels } from "../../productData";
 import type { StudioInput } from "../../orchestrator";
 import type { CapabilityCategory, CapabilityMenuItem, CreativeModel, FrontendConfig } from "../../types";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
@@ -112,6 +114,19 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
     setGeneratedPrompt(String(input.prompt ?? input.message ?? input.script ?? input.product ?? ""));
 
     try {
+      const platformModel = localPlatformModels.find((model) => model.id === selectedModel.id) ?? localPlatformModels.find((model) => model.modality === selectedModel.category) ?? localPlatformModels[0];
+      if (platformModel) {
+        const quote = await quoteRemoteTask({
+          model: { ...platformModel, id: selectedModel.id },
+          input,
+          routeMode: frontendConfig?.defaultRouteMode ?? selectedModel.routeMode ?? "balanced",
+        });
+        if (!quote.allowed) {
+          setTaskError(quote.blockers.map((blocker) => blocker.message).join("；") || quote.message);
+          return;
+        }
+      }
+
       const created = await createRemoteTaskByModelId({
         modelId: selectedModel.id,
         input,

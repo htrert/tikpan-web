@@ -15,7 +15,7 @@ const cache = {
 export const postgresCatalogRepository = {
   async initialize() {
     const db = await getDb();
-    const [providers, providerModels, platformModels, channels, mappings] = await Promise.all([
+    const [providers, providerModels, platformModels, channels, mappings, frontendConfigs] = await Promise.all([
       db.query(
         `select id, name, kind, base_url, auth_type, encrypted_api_key, status, rpm, concurrency, latency_ms, success_rate
          from providers
@@ -43,6 +43,11 @@ export const postgresCatalogRepository = {
          from channel_parameter_mappings
          order by channel_id, platform_param_key`
       ),
+      db.query(
+        `select id, nav_items, capability_menu, default_route_mode
+         from frontend_configs
+         where id = 'default'`
+      ).catch(() => ({ rows: [] })),
     ]);
 
     cache.providers = providers.rows.map(mapProvider);
@@ -50,6 +55,7 @@ export const postgresCatalogRepository = {
     cache.platformModels = platformModels.rows.map(mapPlatformModel);
     cache.channels = channels.rows.map(mapChannel);
     cache.parameterMappings = mappings.rows.map(mapParameterMapping);
+    cache.frontendConfig = frontendConfigs.rows[0] ? mapFrontendConfig(frontendConfigs.rows[0]) : JSON.parse(JSON.stringify(defaultFrontendConfig));
     cache.ready = true;
     cache.loadedAt = new Date().toISOString();
   },
@@ -85,8 +91,21 @@ export const postgresCatalogRepository = {
     return cache.frontendConfig;
   },
 
-  updateFrontendConfig(config) {
-    cache.frontendConfig = config;
+  async updateFrontendConfig(config) {
+    const db = await getDb();
+    const result = await db.query(
+      `insert into frontend_configs (id, nav_items, capability_menu, default_route_mode, updated_at)
+       values ('default', $1::jsonb, $2::jsonb, $3, now())
+       on conflict (id)
+       do update set
+         nav_items = excluded.nav_items,
+         capability_menu = excluded.capability_menu,
+         default_route_mode = excluded.default_route_mode,
+         updated_at = now()
+       returning id, nav_items, capability_menu, default_route_mode`,
+      [JSON.stringify(config.navItems ?? []), JSON.stringify(config.capabilityMenu ?? []), config.defaultRouteMode ?? "balanced"]
+    );
+    cache.frontendConfig = mapFrontendConfig(result.rows[0]);
     return cache.frontendConfig;
   },
 
@@ -422,6 +441,14 @@ function mapParameterMapping(row) {
     valueMap: parseJsonValue(row.value_map, {}),
     defaultValue: parseJsonValue(row.default_value, undefined),
     note: row.note,
+  };
+}
+
+function mapFrontendConfig(row) {
+  return {
+    navItems: parseJsonValue(row.nav_items, []),
+    capabilityMenu: parseJsonValue(row.capability_menu, []),
+    defaultRouteMode: row.default_route_mode ?? "balanced",
   };
 }
 

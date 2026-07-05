@@ -62,6 +62,7 @@ export const adminNavGroups = [
     items: [
       { key: "frontend-config", label: "前台配置" },
       { key: "platform-models", label: "平台模型" },
+      { key: "channel-routes", label: "渠道映射" },
       { key: "core-admin", label: "核心管理" },
       { key: "admin-panel", label: "管理面板" },
       { key: "users", label: "用户管理" },

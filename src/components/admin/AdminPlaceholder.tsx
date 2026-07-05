@@ -2,13 +2,22 @@ import { ArrowLeft, Bell, ChevronDown, CircleDollarSign, FileText, Grid2X2, Home
 import { useEffect, useMemo, useState } from "react";
 import { adminModelProviders, adminNavGroups, adminProfile, adminRecentLogs } from "../../adminData";
 import {
+  createRemoteChannel,
   getFrontendConfig,
+  listRemoteChannels,
   listRemotePlatformModels,
+  listRemoteProviderModels,
+  listRemoteProviders,
   updateFrontendConfig,
+  updateRemoteChannel,
+  upsertRemoteChannelMapping,
   upsertRemotePlatformModel,
+  type ChannelCreate,
+  type ChannelMappingUpsert,
+  type ChannelPatch,
   type PlatformModelUpsert,
 } from "../../apiClient";
-import { platformModels as localPlatformModels } from "../../productData";
+import { platformModels as localPlatformModels, type Channel, type PlatformModel, type Provider, type ProviderModel } from "../../productData";
 import type { AccountSection, AppRoute, CapabilityMenuItem, FrontendConfig, FrontendNavItem, UserProfile } from "../../types";
 import { cn, formatTokens } from "../../lib";
 
@@ -27,6 +36,7 @@ const navIcons: Record<string, typeof LayoutDashboard> = {
   "admin-panel": LayoutDashboard,
   "frontend-config": Grid2X2,
   "platform-models": Sparkles,
+  "channel-routes": ReceiptText,
   users: UsersRound,
   home: Home,
   "model-market": Sparkles,
@@ -139,7 +149,8 @@ export function AdminPlaceholder({
         <main className="min-w-0 flex-1 p-4 sm:p-6">
           {activeKey === "frontend-config" && <FrontendConfigPanel />}
           {activeKey === "platform-models" && <PlatformModelsPanel />}
-          {activeKey !== "frontend-config" && activeKey !== "platform-models" && (
+          {activeKey === "channel-routes" && <ChannelRoutesPanel />}
+          {activeKey !== "frontend-config" && activeKey !== "platform-models" && activeKey !== "channel-routes" && (
           <>
           <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_20px_70px_rgba(15,23,42,0.08)]">
             <div className="h-1.5 rounded-full bg-gradient-to-r from-sky-400 via-blue-500 to-teal-300" />
@@ -470,6 +481,146 @@ function PlatformModelsPanel() {
   );
 }
 
+function ChannelRoutesPanel() {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [models, setModels] = useState<PlatformModel[]>([]);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
+  const [draft, setDraft] = useState<ChannelCreate>({
+    platform_model_id: "",
+    provider_id: "",
+    provider_model_id: "",
+    role: "primary",
+    status: "active",
+    weight: 50,
+    priority: 5,
+    cost_price: 0,
+    sale_price: 0,
+    billing_unit: "request",
+    latency: 10,
+    success_rate: 95,
+  });
+  const [status, setStatus] = useState("正在读取渠道配置...");
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    const [nextModels, nextProviders, nextProviderModels, nextChannels] = await Promise.all([
+      listRemotePlatformModels(localPlatformModels),
+      listRemoteProviders(),
+      listRemoteProviderModels(),
+      listRemoteChannels(),
+    ]);
+    setModels(nextModels);
+    setProviders(nextProviders);
+    setProviderModels(nextProviderModels);
+    setChannels(nextChannels);
+    setDraft((current) => ({
+      ...current,
+      platform_model_id: current.platform_model_id || nextModels[0]?.id || "",
+      provider_id: current.provider_id || nextProviders[0]?.id || "",
+      provider_model_id: current.provider_model_id || nextProviderModels[0]?.id || "",
+    }));
+    setStatus("渠道决定平台模型如何映射到供应商 endpoint，可直接影响前台生成任务。");
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    load().catch((error) => {
+      if (!cancelled) setStatus(error instanceof Error ? error.message : "读取渠道配置失败。");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const saveDraft = async () => {
+    setSaving(true);
+    try {
+      const channel = await createRemoteChannel(draft);
+      setStatus(`已创建渠道：${channel.id}`);
+      await load();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "创建渠道失败。");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const patchChannel = async (channelId: string, patch: ChannelPatch) => {
+    try {
+      const updated = await updateRemoteChannel(channelId, patch);
+      setChannels((current) => current.map((channel) => (channel.id === channelId ? updated : channel)));
+      setStatus(`已更新渠道：${updated.id}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "更新渠道失败。");
+    }
+  };
+
+  const saveMapping = async (channelId: string, mapping: ChannelMappingUpsert) => {
+    try {
+      const updated = await upsertRemoteChannelMapping(channelId, mapping);
+      setChannels((current) => current.map((channel) => (channel.id === channelId ? updated : channel)));
+      setStatus(`已保存映射：${mapping.platform_param_key}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "保存映射失败。");
+    }
+  };
+
+  const providerModelOptions = providerModels.filter((model) => !draft.provider_id || model.providerId === draft.provider_id);
+
+  return (
+    <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm">
+      <PanelHeader
+        title="渠道映射"
+        desc="按“平台模型 → 供应商模型 → 渠道/endpoint → 参数映射”管理前台真实调用链路。"
+        actionLabel={saving ? "创建中..." : "创建渠道"}
+        disabled={saving || !draft.platform_model_id || !draft.provider_id || !draft.provider_model_id}
+        onAction={saveDraft}
+      />
+
+      <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-black text-slate-950">新建渠道</p>
+        <div className="mt-3 grid gap-3 lg:grid-cols-4">
+          <SelectField label="平台模型" value={draft.platform_model_id} options={models.map((model) => ({ label: model.name, value: model.id }))} onChange={(value) => setDraft((current) => ({ ...current, platform_model_id: value }))} />
+          <SelectField
+            label="供应商"
+            value={draft.provider_id}
+            options={providers.map((provider) => ({ label: provider.name, value: provider.id }))}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                provider_id: value,
+                provider_model_id: providerModels.find((model) => model.providerId === value)?.id ?? "",
+              }))
+            }
+          />
+          <SelectField label="供应商模型" value={draft.provider_model_id} options={providerModelOptions.map((model) => ({ label: model.upstreamModelName, value: model.id }))} onChange={(value) => setDraft((current) => ({ ...current, provider_model_id: value }))} />
+          <SelectField label="渠道角色" value={draft.role ?? "primary"} options={["primary", "backup", "cheap", "fast", "quality"].map((role) => ({ label: role, value: role }))} onChange={(value) => setDraft((current) => ({ ...current, role: value as Channel["role"] }))} />
+          <SelectField label="状态" value={draft.status ?? "active"} options={["active", "degraded", "disabled"].map((item) => ({ label: item, value: item }))} onChange={(value) => setDraft((current) => ({ ...current, status: value as Channel["status"] }))} />
+          <NumberField label="权重" value={draft.weight ?? 50} onChange={(value) => setDraft((current) => ({ ...current, weight: value }))} />
+          <NumberField label="成本价" value={draft.cost_price ?? 0} onChange={(value) => setDraft((current) => ({ ...current, cost_price: value }))} />
+          <NumberField label="售价" value={draft.sale_price ?? 0} onChange={(value) => setDraft((current) => ({ ...current, sale_price: value }))} />
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4">
+        {channels.map((channel) => (
+          <ChannelEditor
+            key={channel.id}
+            channel={channel}
+            models={models}
+            providers={providers}
+            providerModels={providerModels}
+            onPatch={(patch) => patchChannel(channel.id, patch)}
+            onSaveMapping={(mapping) => saveMapping(channel.id, mapping)}
+          />
+        ))}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-slate-500">{status}</p>
+    </section>
+  );
+}
+
 function NavItemEditor({ item, onChange }: { item: FrontendNavItem; onChange: (item: FrontendNavItem) => void }) {
   return (
     <div className="grid gap-2 rounded-2xl bg-white p-3 shadow-sm sm:grid-cols-[1fr_auto_auto] sm:items-center">
@@ -665,6 +816,118 @@ function PlatformModelEditor({ form, onChange }: { form: PlatformModelUpsert; on
   );
 }
 
+function ChannelEditor({
+  channel,
+  models,
+  providers,
+  providerModels,
+  onPatch,
+  onSaveMapping,
+}: {
+  channel: Channel;
+  models: PlatformModel[];
+  providers: Provider[];
+  providerModels: ProviderModel[];
+  onPatch: (patch: ChannelPatch) => void;
+  onSaveMapping: (mapping: ChannelMappingUpsert) => void;
+}) {
+  const model = models.find((item) => item.id === channel.platformModelId);
+  const provider = providers.find((item) => item.id === channel.providerId);
+  const providerModel = providerModels.find((item) => item.id === channel.providerModelId || item.upstreamModelName === channel.providerModel || item.id === channel.providerModel);
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <p className="text-sm font-black text-slate-950">{channel.id}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            {model?.name ?? channel.platformModelId} → {provider?.name ?? channel.providerId} / {providerModel?.upstreamModelName ?? channel.providerModel}
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-5">
+          <SelectField label="状态" value={channel.status} options={["active", "degraded", "disabled"].map((item) => ({ label: item, value: item }))} onChange={(value) => onPatch({ status: value as Channel["status"] })} />
+          <SelectField label="角色" value={channel.role} options={["primary", "backup", "cheap", "fast", "quality"].map((item) => ({ label: item, value: item }))} onChange={(value) => onPatch({ role: value as Channel["role"] })} />
+          <NumberField label="权重" value={channel.weight} onChange={(value) => onPatch({ weight: value })} />
+          <NumberField label="成本价" value={Number(channel.cost) || 0} onChange={(value) => onPatch({ cost_price: value })} />
+          <NumberField label="售价" value={Number(channel.sale) || 0} onChange={(value) => onPatch({ sale_price: value })} />
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl bg-slate-50 p-3">
+        <p className="text-xs font-black text-slate-400">支持参数</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {channel.supports.map((item) => (
+            <span key={item} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-slate-500 shadow-sm">
+              {item}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-black text-slate-950">参数映射</p>
+          <button
+            className="h-8 rounded-full bg-slate-950 px-3 text-xs font-black text-white"
+            type="button"
+            onClick={() => onSaveMapping({ platform_param_key: "new_param", upstream_param_key: "new_param", transform: "direct" })}
+          >
+            新增映射
+          </button>
+        </div>
+        {channel.paramMap.map((mapping, index) => (
+          <MappingEditor key={`${mapping.platform}-${index}`} mapping={mapping} onSave={onSaveMapping} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MappingEditor({
+  mapping,
+  onSave,
+}: {
+  mapping: Channel["paramMap"][number];
+  onSave: (mapping: ChannelMappingUpsert) => void;
+}) {
+  const [draft, setDraft] = useState<ChannelMappingUpsert>({
+    platform_param_key: mapping.platform,
+    upstream_param_key: mapping.upstream,
+    transform: mapping.transform,
+    note: mapping.note,
+    value_map: mapping.valueMap,
+    default_value: mapping.defaultValue,
+  });
+
+  useEffect(() => {
+    setDraft({
+      platform_param_key: mapping.platform,
+      upstream_param_key: mapping.upstream,
+      transform: mapping.transform,
+      note: mapping.note,
+      value_map: mapping.valueMap,
+      default_value: mapping.defaultValue,
+    });
+  }, [mapping]);
+
+  return (
+    <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_1fr_150px_1fr_auto] lg:items-end">
+      <TextField label="平台参数" value={draft.platform_param_key} onChange={(value) => setDraft((current) => ({ ...current, platform_param_key: value }))} />
+      <TextField label="上游参数" value={draft.upstream_param_key ?? ""} onChange={(value) => setDraft((current) => ({ ...current, upstream_param_key: value }))} />
+      <SelectField
+        label="转换"
+        value={draft.transform}
+        options={["direct", "map", "default", "omit", "template"].map((item) => ({ label: item, value: item }))}
+        onChange={(value) => setDraft((current) => ({ ...current, transform: value as ChannelMappingUpsert["transform"] }))}
+      />
+      <TextField label="默认值" value={draft.default_value === undefined ? "" : String(draft.default_value)} onChange={(value) => setDraft((current) => ({ ...current, default_value: value }))} />
+      <button className="h-10 rounded-xl bg-sky-100 px-3 text-xs font-black text-sky-700" type="button" onClick={() => onSave(draft)}>
+        保存
+      </button>
+    </div>
+  );
+}
+
 function SchemaFieldEditor({
   field,
   onChange,
@@ -754,6 +1017,49 @@ function TextField({ label, onChange, value }: { label: string; value: string; o
         className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
         value={value}
         onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ label: string; value: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-xs font-black text-slate-400">{label}</span>
+      <select
+        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function NumberField({ label, onChange, value }: { label: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-xs font-black text-slate-400">{label}</span>
+      <input
+        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+        type="number"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
       />
     </label>
   );

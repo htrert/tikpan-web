@@ -729,7 +729,7 @@ async function route(req, res) {
   if (method === "PUT" && url.pathname === "/admin/frontend-config") {
     const body = await readJson(req);
     const config = buildFrontendConfig(body);
-    const saved = catalogRepository.updateFrontendConfig(config);
+    const saved = await catalogRepository.updateFrontendConfig(config);
     recordAudit({
       action: "frontend_config.updated",
       resourceType: "frontend_config",

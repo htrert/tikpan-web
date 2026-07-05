@@ -74,6 +74,7 @@ export type Channel = {
   id: string;
   platformModelId: string;
   providerId: string;
+  providerModelId?: string;
   providerModel: string;
   role: "primary" | "backup" | "cheap" | "fast" | "quality";
   status: "active" | "degraded" | "disabled";
