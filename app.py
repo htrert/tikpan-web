@@ -24,6 +24,7 @@ from api.payment import bp as payment_bp
 from api.generate import bp as generate_bp
 from api.agent import bp as agent_bp
 from api.audio import bp as audio_bp
+from api.projects import bp as projects_bp
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
@@ -65,6 +66,7 @@ app.register_blueprint(payment_bp)
 app.register_blueprint(generate_bp)
 app.register_blueprint(agent_bp)
 app.register_blueprint(audio_bp)   # 音频 TTS + 音乐生成
+app.register_blueprint(projects_bp)
 
 
 # ===== 保留的旧路由 =====

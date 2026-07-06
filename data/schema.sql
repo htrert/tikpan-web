@@ -91,6 +91,55 @@ CREATE TABLE IF NOT EXISTS generation_logs (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'general',
+    status TEXT DEFAULT 'active',
+    description TEXT DEFAULT '',
+    cover_url TEXT DEFAULT '',
+    tags_json TEXT DEFAULT '[]',
+    settings_json TEXT DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    archived_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS media_assets (
+    id TEXT PRIMARY KEY,
+    task_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    project_id TEXT,
+    direction TEXT DEFAULT 'output',
+    object_key TEXT NOT NULL,
+    public_url TEXT DEFAULT '',
+    source_url TEXT DEFAULT '',
+    mime_type TEXT DEFAULT '',
+    storage_mode TEXT DEFAULT 'local',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES generation_logs(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_metadata (
+    task_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    title TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    favorite INTEGER DEFAULT 0,
+    review_status TEXT DEFAULT 'candidate',
+    tags_json TEXT DEFAULT '[]',
+    collections_json TEXT DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (task_id, user_id),
+    FOREIGN KEY (task_id) REFERENCES generation_logs(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS balance_ledger (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -177,6 +226,10 @@ CREATE INDEX IF NOT EXISTS idx_models_category ON models(category_key, sort_orde
 CREATE INDEX IF NOT EXISTS idx_model_fields_model ON model_fields(model_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_generation_logs_user_created ON generation_logs(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_generation_logs_idempotency ON generation_logs(user_id, idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_projects_user_updated ON projects(user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_media_assets_user_created ON media_assets(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_media_assets_project_created ON media_assets(project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_asset_metadata_user_updated ON asset_metadata(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_balance_ledger_user_created ON balance_ledger(user_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_balance_ledger_idempotency ON balance_ledger(idempotency_key) WHERE idempotency_key <> '';
 CREATE INDEX IF NOT EXISTS idx_model_routes_model ON model_provider_routes(model_id, priority);

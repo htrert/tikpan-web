@@ -7,6 +7,7 @@ import os
 import hashlib
 import hmac
 import secrets
+import uuid
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "tikpan.db")
@@ -61,6 +62,55 @@ def init_db():
             image_url TEXT DEFAULT '',
             idempotency_key TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT DEFAULT 'general',
+            status TEXT DEFAULT 'active',
+            description TEXT DEFAULT '',
+            cover_url TEXT DEFAULT '',
+            tags_json TEXT DEFAULT '[]',
+            settings_json TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            archived_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS media_assets (
+            id TEXT PRIMARY KEY,
+            task_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            project_id TEXT,
+            direction TEXT DEFAULT 'output',
+            object_key TEXT NOT NULL,
+            public_url TEXT DEFAULT '',
+            source_url TEXT DEFAULT '',
+            mime_type TEXT DEFAULT '',
+            storage_mode TEXT DEFAULT 'local',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES generation_logs(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (project_id) REFERENCES projects(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS asset_metadata (
+            task_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            title TEXT DEFAULT '',
+            note TEXT DEFAULT '',
+            favorite INTEGER DEFAULT 0,
+            review_status TEXT DEFAULT 'candidate',
+            tags_json TEXT DEFAULT '[]',
+            collections_json TEXT DEFAULT '[]',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, user_id),
+            FOREIGN KEY (task_id) REFERENCES generation_logs(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
@@ -154,6 +204,10 @@ def init_db():
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_balance_ledger_user_created ON balance_ledger(user_id, created_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generation_logs_idempotency ON generation_logs(user_id, idempotency_key)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_user_updated ON projects(user_id, updated_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_media_assets_user_created ON media_assets(user_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_media_assets_project_created ON media_assets(project_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_asset_metadata_user_updated ON asset_metadata(user_id, updated_at)")
     conn.commit()
     conn.close()
 
@@ -670,6 +724,368 @@ def get_generation_by_idempotency(user_id, idempotency_key):
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# ==================== 项目与作品资产 ====================
+
+def _json_loads(value, fallback):
+    if value in (None, ""):
+        return fallback
+    try:
+        parsed = json.loads(value)
+        return parsed if parsed is not None else fallback
+    except (TypeError, json.JSONDecodeError):
+        return fallback
+
+
+def _json_dumps(value):
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def create_project(user_id, name, project_type="general", description="", tags=None, settings=None):
+    project_id = f"proj_{uuid.uuid4().hex[:12]}"
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO projects
+            (id, user_id, name, type, status, description, tags_json, settings_json, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            project_id,
+            user_id,
+            str(name).strip()[:100],
+            project_type or "general",
+            "active",
+            str(description or "").strip()[:500],
+            _json_dumps(tags or []),
+            _json_dumps(settings or {}),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return get_project(project_id, user_id)
+
+
+def get_project(project_id, user_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM projects WHERE id=? AND user_id=? AND status <> 'archived'",
+        (project_id, user_id),
+    ).fetchone()
+    conn.close()
+    return _project_from_row(row) if row else None
+
+
+def list_projects(user_id, limit=50):
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT * FROM projects
+        WHERE user_id=? AND status <> 'archived'
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT ?
+        """,
+        (user_id, int(limit)),
+    ).fetchall()
+    conn.close()
+    return [_project_from_row(row) for row in rows]
+
+
+def touch_project(project_id, user_id):
+    conn = get_db()
+    conn.execute(
+        "UPDATE projects SET updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+        (project_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def create_manual_project_asset(user_id, project_id, title, source_url, mime_type, tags=None, note=""):
+    project = get_project(project_id, user_id)
+    if not project:
+        return None
+
+    tags = tags or []
+    title = str(title or "").strip()[:100]
+    note = str(note or "").strip()[:500]
+    source_url = str(source_url or "").strip()
+    mime_type = str(mime_type or "").strip().lower()
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            """
+            INSERT INTO generation_logs
+                (user_id, model, credits_used, prompt, status, image_url, request_id,
+                 raw_response, idempotency_key, created_at, updated_at)
+            VALUES (?, 'manual-project-asset', 0, ?, 'success', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                title,
+                source_url,
+                f"manual:{project_id}:{uuid.uuid4().hex[:12]}",
+                _json_dumps({
+                    "source": "manual_import",
+                    "project_id": project_id,
+                    "source_url": source_url,
+                    "mime_type": mime_type,
+                    "tags": tags,
+                    "note": note,
+                }),
+                f"manual_asset:{user_id}:{project_id}:{uuid.uuid4().hex}",
+                now,
+                now,
+            ),
+        )
+        task_id = cur.lastrowid
+        media_id = f"media_{uuid.uuid4().hex[:12]}"
+        conn.execute(
+            """
+            INSERT INTO media_assets
+                (id, task_id, user_id, project_id, direction, object_key, public_url,
+                 source_url, mime_type, storage_mode, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                media_id,
+                task_id,
+                user_id,
+                project_id,
+                "output",
+                f"manual/{project_id}/{media_id}",
+                source_url,
+                source_url,
+                mime_type,
+                "local",
+                now,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO asset_metadata
+                (task_id, user_id, title, note, favorite, review_status, tags_json,
+                 collections_json, created_at, updated_at)
+            VALUES (?,?,?,?,0,'approved',?,'[]',?,?)
+            """,
+            (task_id, user_id, title, note, _json_dumps(tags), now, now),
+        )
+        conn.execute(
+            "UPDATE projects SET updated_at=? WHERE id=? AND user_id=?",
+            (now, project_id, user_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return get_asset_item(task_id, user_id)
+
+
+def list_project_assets(user_id, project_id=None, limit=50):
+    conn = get_db()
+    clauses = ["g.user_id=?", "g.status='success'", "m.id IS NOT NULL"]
+    args = [user_id]
+    if project_id:
+        clauses.append("m.project_id=?")
+        args.append(project_id)
+    args.append(int(limit))
+    rows = conn.execute(
+        f"""
+        SELECT
+            g.*,
+            m.id AS media_id,
+            m.project_id AS asset_project_id,
+            m.object_key,
+            m.public_url,
+            m.source_url,
+            m.mime_type,
+            m.storage_mode,
+            m.direction,
+            m.created_at AS media_created_at,
+            p.name AS project_name,
+            am.title AS asset_title,
+            am.note AS asset_note,
+            am.favorite,
+            am.review_status,
+            am.tags_json,
+            am.collections_json
+        FROM generation_logs g
+        LEFT JOIN media_assets m ON m.task_id = g.id
+        LEFT JOIN projects p ON p.id = m.project_id
+        LEFT JOIN asset_metadata am ON am.task_id = g.id AND am.user_id = g.user_id
+        WHERE {" AND ".join(clauses)}
+        ORDER BY g.created_at DESC, g.id DESC
+        LIMIT ?
+        """,
+        args,
+    ).fetchall()
+    conn.close()
+    return [_asset_from_row(row) for row in rows]
+
+
+def get_asset_item(task_id, user_id):
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT
+            g.*,
+            m.id AS media_id,
+            m.project_id AS asset_project_id,
+            m.object_key,
+            m.public_url,
+            m.source_url,
+            m.mime_type,
+            m.storage_mode,
+            m.direction,
+            m.created_at AS media_created_at,
+            p.name AS project_name,
+            am.title AS asset_title,
+            am.note AS asset_note,
+            am.favorite,
+            am.review_status,
+            am.tags_json,
+            am.collections_json
+        FROM generation_logs g
+        LEFT JOIN media_assets m ON m.task_id = g.id
+        LEFT JOIN projects p ON p.id = m.project_id
+        LEFT JOIN asset_metadata am ON am.task_id = g.id AND am.user_id = g.user_id
+        WHERE g.id=? AND g.user_id=?
+        """,
+        (task_id, user_id),
+    ).fetchone()
+    conn.close()
+    return _asset_from_row(row) if row else None
+
+
+def project_stats(user_id, project_id):
+    conn = get_db()
+    tasks = conn.execute(
+        """
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS completed,
+               SUM(CASE WHEN status IN ('failed','refunded') THEN 1 ELSE 0 END) AS failed,
+               SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS active,
+               SUM(credits_used) AS spend
+        FROM generation_logs
+        WHERE user_id=? AND id IN (SELECT task_id FROM media_assets WHERE project_id=?)
+        """,
+        (user_id, project_id),
+    ).fetchone()
+    assets = conn.execute(
+        "SELECT COUNT(*) AS total FROM media_assets WHERE user_id=? AND project_id=?",
+        (user_id, project_id),
+    ).fetchone()
+    conn.close()
+    return {
+        "tasks_total": int(tasks["total"] or 0),
+        "tasks_completed": int(tasks["completed"] or 0),
+        "tasks_failed": int(tasks["failed"] or 0),
+        "tasks_active": int(tasks["active"] or 0),
+        "assets_total": int(assets["total"] or 0),
+        "token_spend": int(tasks["spend"] or 0),
+    }
+
+
+def public_project(project, include_detail=False):
+    data = {
+        **project,
+        "stats": project_stats(project["user_id"], project["id"]),
+    }
+    if include_detail:
+        data["assets"] = list_project_assets(project["user_id"], project["id"], 20)
+        data["tasks"] = [
+            {
+                "task_id": asset["task_id"],
+                "model": asset["model"],
+                "status": "succeeded",
+                "project_id": asset["project_id"],
+                "project_name": asset["project_name"],
+                "input": asset["input"],
+                "output": {"publicUrls": asset["output_urls"]},
+                "created_at": asset["created_at"],
+                "finished_at": asset["finished_at"],
+            }
+            for asset in data["assets"]
+        ]
+    return data
+
+
+def _project_from_row(row):
+    return {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "name": row["name"],
+        "type": row["type"] or "general",
+        "status": row["status"] or "active",
+        "description": row["description"] or "",
+        "cover_url": row["cover_url"] or None,
+        "tags": _json_loads(row["tags_json"], []),
+        "settings": _json_loads(row["settings_json"], {}),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "archived_at": row["archived_at"],
+    }
+
+
+def _asset_from_row(row):
+    tags = _json_loads(row["tags_json"], []) if "tags_json" in row.keys() else []
+    collections = _json_loads(row["collections_json"], []) if "collections_json" in row.keys() else []
+    media_asset = {
+        "id": row["media_id"],
+        "object_key": row["object_key"],
+        "public_url": row["public_url"],
+        "mime_type": row["mime_type"],
+        "source_url": row["source_url"],
+        "storage_mode": row["storage_mode"],
+        "direction": row["direction"],
+        "created_at": row["media_created_at"],
+    }
+    output_urls = [url for url in [row["public_url"], row["image_url"]] if url]
+    return {
+        "id": f"asset_{row['id']}",
+        "task_id": row["id"],
+        "project_id": row["asset_project_id"],
+        "project_name": row["project_name"],
+        "model": row["model"],
+        "model_name": "Manual asset" if row["model"] == "manual-project-asset" else row["model"],
+        "modality": _asset_modality(row["mime_type"]),
+        "status": row["status"],
+        "route_mode": "manual" if row["model"] == "manual-project-asset" else "balanced",
+        "title": row["asset_title"] or "",
+        "note": row["asset_note"] or "",
+        "favorite": bool(row["favorite"] or 0),
+        "review_status": row["review_status"] or "candidate",
+        "tags": tags,
+        "collections": collections,
+        "prompt": row["prompt"] or "",
+        "input": {"prompt": row["prompt"] or "", "source_url": row["source_url"], "tags": tags},
+        "output_urls": list(dict.fromkeys(output_urls)),
+        "media_assets": [media_asset] if row["media_id"] else [],
+        "final_cost": row["credits_used"] or 0,
+        "created_at": row["created_at"],
+        "finished_at": row["updated_at"] or row["created_at"],
+    }
+
+
+def _asset_modality(mime_type):
+    value = str(mime_type or "")
+    if value.startswith("video/"):
+        return "video"
+    if value.startswith("audio/"):
+        return "audio"
+    if value.startswith("text/") or value == "application/pdf":
+        return "chat"
+    return "image"
 
 
 def get_ledger_entries(user_id=None, limit=100):
