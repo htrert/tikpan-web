@@ -28,7 +28,7 @@ export function UserMenu({ user, onNavigate }: UserMenuProps) {
     <div className="relative">
       <button
         aria-label="用户菜单"
-        className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-teal-500 via-sky-500 to-violet-500 text-sm font-black text-white shadow-sm ring-2 ring-white"
+        className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-[#4b16d1] via-[#7c3aed] to-[#c4b5fd] text-sm font-black text-white shadow-sm ring-2 ring-white"
         type="button"
         onClick={() => setOpen((current) => !current)}
       >

@@ -154,9 +154,11 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
   };
 
   return (
-    <div className="fine-grid min-h-[calc(100vh-64px)]">
-      <div className="mx-auto flex max-w-[1600px] gap-0 px-0 lg:px-0">
-        <aside className="hidden w-[302px] shrink-0 border-r border-violet-100/80 bg-violet-50/55 md:block">
+    <div className="aurora-surface relative min-h-[calc(100vh-64px)] overflow-hidden">
+      <div className="ambient-glow-cyan -right-28 top-10 hidden h-96 w-96 md:block" />
+      <div className="ambient-glow-blue -left-32 top-60 hidden h-80 w-80 lg:block" />
+      <div className="relative z-10 mx-auto flex max-w-[1600px] gap-0 px-0 lg:px-0">
+        <aside className="hidden w-[302px] shrink-0 border-r border-[#ded5f6] bg-[#f2edfb]/86 md:block">
           <WorkspaceSidebar
             category={category}
             query={query}
@@ -173,7 +175,7 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
         <div className="min-w-0 flex-1 px-4 py-4 sm:px-6 lg:py-6">
           <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
             <button
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white shadow-sm"
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-[#4b16d1] px-4 text-sm font-bold text-white shadow-sm"
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
             >
@@ -201,14 +203,14 @@ export function WorkspacePage({ templatePrompt }: { templatePrompt: string }) {
           >
             <motion.aside
               animate={{ x: 0 }}
-              className="h-full w-[86vw] max-w-sm bg-[#f8faf7] p-3 shadow-2xl"
+              className="h-full w-[86vw] max-w-sm bg-[#f7f4ff] p-3 shadow-2xl"
               exit={{ x: "-100%" }}
               initial={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 34 }}
             >
               <div className="mb-3 flex items-center justify-between">
                 <div className="inline-flex items-center gap-2 text-sm font-black text-slate-950">
-                  <Sparkles className="h-4 w-4 text-teal-600" />
+                  <Sparkles className="h-4 w-4 text-[#6d32d9]" />
                   创作能力
                 </div>
                 <button

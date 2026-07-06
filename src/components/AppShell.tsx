@@ -35,7 +35,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8faf7] text-slate-950">
+    <div className="min-h-screen bg-[#f7f4ff] text-slate-950">
       <TopNav navItems={navItems} route={route} user={user} onNavigate={onNavigate} />
       <AnimatePresence mode="wait">
         <motion.main

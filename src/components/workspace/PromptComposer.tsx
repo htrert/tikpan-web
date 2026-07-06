@@ -66,12 +66,12 @@ export function PromptComposer({
   };
 
   return (
-    <div className="sticky bottom-4 z-20 mx-auto w-full max-w-6xl rounded-3xl border border-violet-100 bg-white/94 p-3 shadow-[0_18px_70px_rgba(80,56,140,0.14)] backdrop-blur-2xl">
+    <div className="breathing-shell sticky bottom-4 z-20 mx-auto w-full max-w-6xl rounded-3xl border border-[#cdb8ff] bg-white/80 p-3 shadow-[0_22px_80px_rgba(121,86,220,0.16)] backdrop-blur-2xl">
       <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
-        <span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm">{model.name}</span>
-        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-500">{model.controls.length} 项创作设置 · 预计 {formatTokens(model.cost)}</span>
+        <span className="rounded-full border border-[#ded5f6] bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm">{model.name}</span>
+        <span className="rounded-full border border-[#ded5f6] bg-white px-3 py-1.5 text-xs font-black text-slate-600">{model.controls.length} 项创作设置 · 预计 {formatTokens(model.cost)}</span>
       </div>
-      <div className="rounded-2xl border border-slate-200/70 bg-white p-3">
+      <div className="rounded-2xl border border-[#eee7ff] bg-white/76 p-3">
         <textarea
           className="min-h-16 w-full resize-none border-0 bg-transparent p-1 text-base font-semibold leading-7 text-slate-800 outline-none placeholder:text-slate-400"
           placeholder="描述你的画面、商品、场景或风格..."
@@ -103,7 +103,7 @@ export function PromptComposer({
             <div className="flex flex-col gap-1 sm:items-end">
               <p className="text-xs font-semibold text-slate-500">预估消耗 {formatTokens(model.cost)}，失败或取消自动退回。</p>
               <button
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-white shadow-[0_16px_35px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:text-[#6d32d9] disabled:cursor-not-allowed disabled:opacity-70"
                 type="button"
                 disabled={generating}
                 onClick={handleGenerate}
@@ -133,7 +133,7 @@ function ComposerAction({
     <button
       className={cn(
         "inline-flex h-9 items-center gap-2 rounded-full px-3 text-xs font-black transition",
-        active ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+        active ? "bg-[#eef3ff] text-[#1261a6] ring-1 ring-[#d7dcff]" : "bg-white text-slate-600 ring-1 ring-[#ded5f6] hover:text-[#6d32d9]",
       )}
       type="button"
       onClick={onClick}
@@ -169,7 +169,7 @@ function ParameterControl({
         <button
           className={cn(
             "h-9 rounded-lg px-3 text-xs font-black transition",
-            value ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-500 hover:bg-white hover:text-slate-800",
+            value ? "bg-[#4b16d1] text-white" : "bg-white text-slate-500 ring-1 ring-[#ded5f6] hover:text-[#6d32d9]",
           )}
           type="button"
           onClick={() => onChange(!value)}
@@ -188,7 +188,7 @@ function ParameterControl({
         {label}
         <div className="flex items-center gap-2">
           <input
-            className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+            className="h-9 w-24 rounded-lg border border-[#ded5f6] bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-[#b899ff] focus:ring-4 focus:ring-[#eee6ff]"
             max={parameter.max}
             min={parameter.min}
             step={parameter.step ?? 1}
@@ -198,7 +198,7 @@ function ParameterControl({
           />
           {parameter.type === "slider" && (
             <input
-              className="h-8 min-w-0 flex-1 accent-violet-700"
+              className="h-8 min-w-0 flex-1 accent-[#6d32d9]"
               max={parameter.max}
               min={parameter.min}
               step={parameter.step ?? 1}
@@ -220,7 +220,7 @@ function ParameterControl({
       <div className="grid gap-2 rounded-xl bg-slate-50/80 p-2.5">
         {label}
         <select
-          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+          className="h-9 w-full rounded-lg border border-[#ded5f6] bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-[#b899ff] focus:ring-4 focus:ring-[#eee6ff]"
           value={String(value ?? parameter.defaultValue ?? "")}
           onChange={(event) => onChange(event.target.value)}
         >
@@ -240,7 +240,7 @@ function ParameterControl({
       <label className="grid gap-2 rounded-xl bg-slate-50/80 p-2.5">
         {label}
         <input
-          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+          className="h-9 rounded-lg border border-[#ded5f6] bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-[#b899ff] focus:ring-4 focus:ring-[#eee6ff]"
           value={String(value ?? "")}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -253,7 +253,7 @@ function ParameterControl({
       <div className="grid gap-2 rounded-xl bg-slate-50/80 p-2.5">
         {label}
         <button
-          className="h-9 rounded-lg border border-dashed border-slate-300 bg-white px-3 text-left text-xs font-black text-slate-500 transition hover:border-violet-300 hover:text-violet-700"
+          className="h-9 rounded-lg border border-dashed border-[#ded5f6] bg-white px-3 text-left text-xs font-black text-slate-500 transition hover:border-[#b899ff] hover:text-[#6d32d9]"
           type="button"
           onClick={() => onChange("")}
         >
@@ -273,7 +273,7 @@ function ParameterControl({
             key={String(option.value)}
             className={cn(
               "h-8 rounded-lg px-3 text-xs font-black transition",
-              String(option.value) === String(value ?? parameter.defaultValue ?? "") ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-500 hover:bg-white hover:text-slate-800",
+              String(option.value) === String(value ?? parameter.defaultValue ?? "") ? "bg-[#4b16d1] text-white" : "bg-white text-slate-500 ring-1 ring-[#ded5f6] hover:text-[#6d32d9]",
             )}
             type="button"
             onClick={() => onChange(option.value)}
